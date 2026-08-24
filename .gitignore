@@ -1,0 +1,102 @@
+# ==============================================================================
+# AquaGuard AI - .gitignore
+# AI-Based Plastic Waste Detection in Water Bodies Using Computer Vision
+# ==============================================================================
+
+# --- System & OS files ---
+.DS_Store
+Thumbs.db
+desktop.ini
+*$*
+
+# --- IDEs and Editors ---
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.project
+.classpath
+.settings/
+
+# --- Virtual Environments & Python Env ---
+.venv/
+venv/
+env/
+ENV/
+pyvenv.cfg
+.python-version
+pip-selfcheck.json
+.pytest_cache/
+.tox/
+.nox/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# --- Python Compiled/Cache Files ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.pyd
+
+# --- Node & React Frontend ---
+node_modules/
+/frontend/node_modules/
+/frontend/dist/
+/frontend/build/
+/frontend/.next/
+/frontend/out/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.eslintcache
+.stylelintcache
+
+# --- Data, Models, & ML Artifacts ---
+# Force ignoring of datasets and weights to prevent accidental commits
+data/
+datasets/
+models/
+weights/
+*.pt
+*.pth
+*.onnx
+*.pb
+*.h5
+*.tflite
+*.pkl
+*.joblib
+mlruns/
+lightning_logs/
+wandb/
+.neptune/
+
+# --- Database ---
+# Local database files and volumes
+pgdata/
+postgres-data/
+*.sql.gz
+*.sql
+
+# --- Secrets & Environment Variables ---
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env
+!.env.example
+
+# --- Logs, Temporary Files, and Dumps ---
+logs/
+*.log
+*.tmp
+*.temp
+/scratch/
+/artifacts/
