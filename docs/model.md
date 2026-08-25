@@ -175,5 +175,49 @@ artifacts/yolo_dataset/
 └── preparation_report.md
 ```
 
+---
+
+## 8. Baseline YOLO Training Pipeline
+
+The baseline YOLO training pipeline `train.py` handles model configuration loading, hardware auto-detection (CPU/CUDA), deterministic baseline training execution, automated validation evaluation, and logs metrics files.
+
+### 8.1 Hardware Auto-Detection
+
+The training script automatically checks device capabilities:
+- **CUDA GPU:** Used automatically if available on host hardware (uses device `"0"` by default).
+- **CPU:** Standard fallback if no GPU is found.
+- Supports override through the `--device` argument (e.g. `--device cpu` or `--device 0`).
+
+### 8.2 Execution via CLI
+
+Execute the training pipeline via the command line interface:
+
+```bash
+python -m ml_pipeline.train \
+    --data artifacts/yolo_dataset/dataset.yaml \
+    --model yolov8n.pt \
+    --epochs 10 \
+    --batch 16 \
+    --imgsz 640 \
+    --project artifacts/training \
+    --name baseline
+```
+
+### 8.3 Generated Artifacts
+
+Upon completion, the run results and metrics are structured inside the target experiment directory:
+```text
+artifacts/training/baseline/
+├── weights/
+│   ├── best.pt
+│   └── last.pt
+├── metrics.json
+└── training_report.md
+```
+
+- **`metrics.json`**: Machine-readable JSON summary containing final precision, recall, mAP50, mAP50-95, elapsed duration, hardware details, and hyperparameters configuration.
+- **`training_report.md`**: Human-readable Markdown summary report detailing final validation metrics and checkpoint paths.
+
+
 
 

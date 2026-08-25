@@ -3,6 +3,8 @@ import sys
 import json
 import logging
 import argparse
+import platform
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Tuple, Dict, Any, List
@@ -11,17 +13,24 @@ from typing import Tuple, Dict, Any, List
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-# Try importing yaml, fallback to simple parser if missing
+# Try importing PyYAML
 try:
     import yaml
 except ImportError:
     yaml = None
 
-# Try importing ultralytics, but don't fail import if missing
+# Try importing torch
 try:
-    from ultralytics import YOLO
+    import torch
+except ImportError:
+    torch = None
+
+# Try importing ultralytics
+try:
+    from ultralytics import YOLO, __version__ as ultralytics_version
 except ImportError:
     YOLO = None
+    ultralytics_version = "unknown"
 
 SUPPORTED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 
@@ -29,7 +38,7 @@ def load_dataset_yaml(yaml_path: Path) -> dict:
     """Loads and parses the dataset configuration YAML file."""
     if not yaml_path.exists():
         raise FileNotFoundError(f"Dataset configuration YAML not found at: {yaml_path}")
-    
+        
     logger.info(f"Loading dataset configuration from: {yaml_path}")
     with open(yaml_path, "r") as f:
         if yaml is not None:
@@ -41,7 +50,7 @@ def load_dataset_yaml(yaml_path: Path) -> dict:
             except Exception as e:
                 raise ValueError(f"Failed to parse YAML: {e}")
         else:
-            # Simple line-by-line fallback parser for environments without PyYAML
+            # Fallback custom parser for environments without PyYAML
             data = {}
             for line in f:
                 line = line.strip()
@@ -51,14 +60,11 @@ def load_dataset_yaml(yaml_path: Path) -> dict:
                     k, v = line.split(":", 1)
                     k = k.strip()
                     v = v.strip()
-                    # Strip quotes if present
                     if v.startswith(("'", '"')) and v.endswith(("'", '"')):
                         v = v[1:-1]
-                    # Simple integer or list parser
                     if v.isdigit():
                         data[k] = int(v)
                     elif v.startswith("[") and v.endswith("]"):
-                        # Parse simple list
                         items = [i.strip().strip("'\"") for i in v[1:-1].split(",")]
                         data[k] = items
                     else:
@@ -68,19 +74,15 @@ def load_dataset_yaml(yaml_path: Path) -> dict:
 def validate_dataset_paths(yaml_data: dict, yaml_path: Path) -> Tuple[Path, Path, Path, Path]:
     """
     Validates and resolves paths defined in the dataset YAML file.
-    
     Returns:
         Tuple of (train_images_dir, train_labels_dir, val_images_dir, val_labels_dir)
     """
-    # 1. Check required fields
     for field in ["path", "train", "val"]:
         if field not in yaml_data:
             raise KeyError(f"Missing required field '{field}' in dataset configuration")
             
     base_path = Path(yaml_data["path"])
     
-    # Resolve relative paths
-    # Ultralytics resolves paths relative to the directory containing dataset.yaml or Cwd
     if not base_path.is_absolute():
         resolved_base = (yaml_path.parent / base_path).resolve()
         if not (resolved_base / yaml_data["train"]).exists():
@@ -91,11 +93,9 @@ def validate_dataset_paths(yaml_data: dict, yaml_path: Path) -> Tuple[Path, Path
     train_images = (resolved_base / yaml_data["train"]).resolve()
     val_images = (resolved_base / yaml_data["val"]).resolve()
     
-    # YOLO labels directory is parallel to images (replacing 'images' with 'labels')
     train_labels = (resolved_base / yaml_data["train"].replace("images", "labels")).resolve()
     val_labels = (resolved_base / yaml_data["val"].replace("images", "labels")).resolve()
     
-    # 2. Check directories existence
     for dir_path, dir_name in [
         (train_images, "Train images"),
         (val_images, "Validation images"),
@@ -108,9 +108,7 @@ def validate_dataset_paths(yaml_data: dict, yaml_path: Path) -> Tuple[Path, Path
     return train_images, train_labels, val_images, val_labels
 
 def validate_image_label_consistency(images_dir: Path, labels_dir: Path) -> Dict[str, Any]:
-    """
-    Validates that the image files and label files match 1-to-1.
-    """
+    """Validates that the image files and label files match 1-to-1."""
     image_files = {}
     for p in images_dir.glob("*"):
         if p.suffix.lower() in SUPPORTED_IMAGE_EXTENSIONS:
@@ -138,49 +136,104 @@ def validate_image_label_consistency(images_dir: Path, labels_dir: Path) -> Dict
         "orphan_labels": orphan_labels
     }
 
-def run_training_pipeline(args: argparse.Namespace) -> Dict[str, Any]:
-    """Executes the training pipeline including configuration load, checks, and YOLO training."""
-    yaml_path = Path(args.dataset)
+def detect_device(requested_device: str = "") -> str:
+    """Detects available hardware or validates target device configuration."""
+    if torch is None:
+        return "cpu"
+        
+    # Check custom cuda device request
+    if requested_device:
+        device_lower = requested_device.lower()
+        if "cuda" in device_lower or device_lower.isdigit():
+            if not torch.cuda.is_available():
+                raise ValueError(f"Requested CUDA device '{requested_device}' is not available.")
+            return requested_device
+        return requested_device
+        
+    # Auto-detection
+    if torch.cuda.is_available():
+        return "0"  # default to first cuda gpu
+    return "cpu"
+
+def extract_metrics(val_results) -> Dict[str, float]:
+    """Safely extracts precision, recall, mAP50, and mAP50-95 from YOLO validation results."""
+    metrics = {
+        "precision": 0.0,
+        "recall": 0.0,
+        "mAP50": 0.0,
+        "mAP50-95": 0.0
+    }
+    if val_results is None:
+        return metrics
+        
+    if hasattr(val_results, "results_dict"):
+        d = val_results.results_dict
+        metrics["precision"] = d.get("metrics/precision(B)", d.get("metrics/precision", 0.0))
+        metrics["recall"] = d.get("metrics/recall(B)", d.get("metrics/recall", 0.0))
+        metrics["mAP50"] = d.get("metrics/mAP50(B)", d.get("metrics/mAP50", 0.0))
+        metrics["mAP50-95"] = d.get("metrics/mAP50-95(B)", d.get("metrics/mAP50-95", 0.0))
+        
+    if hasattr(val_results, "box"):
+        box = val_results.box
+        if box is not None:
+            # box.mp (mean precision), box.mr (mean recall), box.map50, box.map
+            metrics["precision"] = getattr(box, "mp", metrics["precision"])
+            metrics["recall"] = getattr(box, "mr", metrics["recall"])
+            metrics["mAP50"] = getattr(box, "map50", metrics["mAP50"])
+            metrics["mAP50-95"] = getattr(box, "map", metrics["mAP50-95"])
+            
+    for k in metrics:
+        metrics[k] = float(metrics[k])
+        
+    return metrics
+
+def run_training_pipeline(args: argparse.Namespace) -> Tuple[Dict[str, Any], str]:
+    """Executes dataset verification, YOLO training, validation, and logs reports."""
+    # 1. Print and log software/device variables
+    python_ver = platform.python_version()
+    device = detect_device(args.device)
+    
+    logger.info("=== Baseline Training Parameters ===")
+    logger.info(f"Python Version: {python_ver}")
+    logger.info(f"Ultralytics Version: {ultralytics_version}")
+    logger.info(f"Selected Device: {device}")
+    logger.info(f"Dataset path: {args.data}")
+    logger.info(f"Model path: {args.model}")
+    logger.info(f"Epochs: {args.epochs}")
+    logger.info(f"Image size: {args.imgsz}")
+    logger.info(f"Batch size: {args.batch}")
+    logger.info("====================================")
+    
+    yaml_path = Path(args.data)
     yaml_data = load_dataset_yaml(yaml_path)
     
-    # Validate paths
+    # 2. Validate paths and splits consistency
     train_img, train_lbl, val_img, val_lbl = validate_dataset_paths(yaml_data, yaml_path)
-    
-    # Validate consistency
     train_check = validate_image_label_consistency(train_img, train_lbl)
     val_check = validate_image_label_consistency(val_img, val_lbl)
     
     if not train_check["is_consistent"] or not val_check["is_consistent"]:
-        err_msg = (
+        err = (
             f"Dataset consistency check failed.\n"
-            f"Train: {train_check['total_images']} images, {train_check['total_labels']} labels. "
-            f"Missing labels: {train_check['missing_labels_count']}, Orphans: {train_check['orphan_labels_count']}.\n"
-            f"Validation: {val_check['total_images']} images, {val_check['total_labels']} labels. "
-            f"Missing labels: {val_check['missing_labels_count']}, Orphans: {val_check['orphan_labels_count']}."
+            f"Train: {train_check['total_images']} images, {train_check['total_labels']} labels.\n"
+            f"Validation: {val_check['total_images']} images, {val_check['total_labels']} labels."
         )
-        logger.error(err_msg)
-        raise ValueError(err_msg)
+        logger.error(err)
+        raise ValueError(err)
         
-    logger.info("Dataset consistency checks passed. Train and Validation sets are consistent.")
-    
     if YOLO is None:
-        logger.error("Ultralytics YOLO is not installed. Cannot run training.")
         raise ImportError("Ultralytics package is missing. Run 'pip install ultralytics'")
         
-    logger.info(f"Initializing YOLO model: {args.model}")
+    # Check model weights file path check (unless downloading default yolov8n.pt)
+    if args.model != "yolov8n.pt" and not Path(args.model).exists():
+        raise FileNotFoundError(f"Selected model file does not exist: {args.model}")
+        
+    # 3. Train
+    logger.info(f"Loading baseline model: {args.model}")
     model = YOLO(args.model)
     
-    logger.info(
-        f"Starting YOLO baseline training:\n"
-        f"  - Dataset config: {yaml_path}\n"
-        f"  - Epochs: {args.epochs}\n"
-        f"  - Image size: {args.imgsz}\n"
-        f"  - Batch size: {args.batch}\n"
-        f"  - Device: {args.device or 'auto'}\n"
-        f"  - Output dir: {args.project}/{args.name}"
-    )
+    start_time = time.perf_counter()
     
-    # Convert args for YOLO training
     train_kwargs = {
         "data": str(yaml_path),
         "epochs": args.epochs,
@@ -188,79 +241,101 @@ def run_training_pipeline(args: argparse.Namespace) -> Dict[str, Any]:
         "batch": args.batch,
         "project": args.project,
         "name": args.name,
+        "device": device,
+        "deterministic": True,
+        "verbose": False
     }
     
-    if args.device:
-        train_kwargs["device"] = args.device
-        
-    results = model.train(**train_kwargs)
+    logger.info("Executing training...")
+    model.train(**train_kwargs)
     
-    # Save training report details
+    # 4. Automatically run validation
+    logger.info("Executing validation on split...")
+    val_results = model.val(data=str(yaml_path), verbose=False)
+    
+    duration = time.perf_counter() - start_time
+    minutes, seconds = divmod(int(duration), 60)
+    hours, minutes = divmod(minutes, 60)
+    duration_str = f"{hours}h {minutes}m {seconds}s" if hours > 0 else f"{minutes}m {seconds}s"
+    
+    metrics = extract_metrics(val_results)
+    
+    # Organize outputs
+    run_dir = Path(args.project) / args.name
+    run_dir.mkdir(parents=True, exist_ok=True)
+    
     report_data = {
-        "status": "success",
-        "timestamp": datetime.now().isoformat(),
-        "model_baseline": args.model,
-        "dataset_yaml": str(yaml_path),
-        "hyperparameters": {
+        "precision": metrics["precision"],
+        "recall": metrics["recall"],
+        "mAP50": metrics["mAP50"],
+        "mAP50-95": metrics["mAP50-95"],
+        "training_configuration": {
             "epochs": args.epochs,
             "imgsz": args.imgsz,
             "batch": args.batch,
-            "device": args.device or "auto"
+            "model_name": args.model,
+            "device": device
         },
-        "dataset_stats": {
-            "train_images": train_check["total_images"],
-            "val_images": val_check["total_images"]
-        },
-        "output_directory": f"{args.project}/{args.name}"
+        "model_name": args.model,
+        "dataset_path": str(yaml_path.resolve()).replace("\\", "/"),
+        "device": device,
+        "timestamp": datetime.now().isoformat(),
+        "duration": duration_str,
+        "output_directory": str(run_dir.resolve()).replace("\\", "/")
     }
     
-    return report_data
+    # Save metrics.json
+    metrics_json_path = run_dir / "metrics.json"
+    with open(metrics_json_path, "w") as f:
+        json.dump(report_data, f, indent=4)
+        
+    # Generate Markdown Report
+    best_model_path = run_dir / "weights" / "best.pt"
+    best_model_path_str = str(best_model_path.resolve()).replace("\\", "/")
+    md_content = f"""# AquaGuard AI - Baseline Training Report
 
-def generate_markdown_report(data: Dict[str, Any]) -> str:
-    """Generates the human-readable Markdown training report."""
-    md = []
-    md.append("# AquaGuard AI - YOLO Training Report\n")
-    md.append(f"**Execution Timestamp:** {data.get('timestamp')}\n")
-    
-    md.append("## 1. Baseline Experiment Configuration")
-    md.append(f"- **Baseline Model:** `{data.get('model_baseline')}`")
-    md.append(f"- **Dataset Configuration:** `{data.get('dataset_yaml')}`")
-    md.append(f"- **Output Directory:** `{data.get('output_directory')}`\n")
-    
-    md.append("### Hyperparameters")
-    hp = data.get("hyperparameters", {})
-    md.append(f"- Epochs: {hp.get('epochs')}")
-    md.append(f"- Image Size: {hp.get('imgsz')}px")
-    md.append(f"- Batch Size: {hp.get('batch')}")
-    md.append(f"- Device: {hp.get('device')}\n")
-    
-    md.append("## 2. Dataset Split Summary")
-    ds = data.get("dataset_stats", {})
-    md.append(f"- Training Images: {ds.get('train_images')}")
-    md.append(f"- Validation Images: {ds.get('val_images')}\n")
-    
-    md.append("## 3. Results & Output Checkpoints")
-    md.append("Training completed successfully. Checkpoints and performance plots are available under:")
-    md.append(f"`{data.get('output_directory')}/`")
-    md.append(f"- Best model checkpoint: `{data.get('output_directory')}/weights/best.pt`\n")
-    
-    return "\n".join(md)
+**Report Generation Timestamp:** {report_data["timestamp"]}
+
+## 1. Experiment Configuration
+- **Model Baseline:** `{report_data["model_name"]}`
+- **Dataset Path:** `{report_data["dataset_path"]}`
+- **Hardware/Device:** `{report_data["device"]}`
+- **Epochs:** {report_data["training_configuration"]["epochs"]}
+- **Image Size:** {report_data["training_configuration"]["imgsz"]}px
+- **Batch Size:** {report_data["training_configuration"]["batch"]}
+- **Training Duration:** {duration_str}
+
+## 2. Evaluation Metrics (Validation Split)
+- **Precision:** {metrics["precision"]:.4f}
+- **Recall:** {metrics["recall"]:.4f}
+- **mAP@0.5:** {metrics["mAP50"]:.4f}
+- **mAP@0.5:0.95:** {metrics["mAP50-95"]:.4f}
+
+## 3. Results & Outputs
+- **Best Model Checkpoint:** `{best_model_path_str}`
+- **Validation Output Directory:** `{report_data["output_directory"]}`
+"""
+    md_report_path = run_dir / "training_report.md"
+    with open(md_report_path, "w") as f:
+        f.write(md_content)
+        
+    return report_data, md_content
 
 def main():
     parser = argparse.ArgumentParser(
         description="AquaGuard AI - YOLO Baseline Training Pipeline"
     )
     parser.add_argument(
-        "--dataset",
+        "--data",
         type=str,
-        default="artifacts/prepared_dataset/dataset.yaml",
-        help="Path to dataset.yaml"
+        default="artifacts/yolo_dataset/dataset.yaml",
+        help="Path to dataset.yaml configuration file"
     )
     parser.add_argument(
         "--model",
         type=str,
         default="yolov8n.pt",
-        help="Baseline model to load (e.g. yolov8n.pt)"
+        help="Lightweight YOLO model suitable for experimentation (e.g. yolov8n.pt)"
     )
     parser.add_argument(
         "--epochs",
@@ -281,46 +356,29 @@ def main():
         help="Batch size"
     )
     parser.add_argument(
-        "--device",
-        type=str,
-        default="",
-        help="Device (e.g. cpu, cuda, 0)"
-    )
-    parser.add_argument(
         "--project",
         type=str,
         default="artifacts/training",
-        help="Project output directory"
+        help="Output project directory for experiments tracking"
     )
     parser.add_argument(
         "--name",
         type=str,
         default="baseline",
-        help="Name of the training run experiment"
+        help="Name of the experiment run"
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="",
+        help="Hardware device (e.g. cpu, cuda, 0)"
     )
     
     args = parser.parse_args()
     
     try:
-        report_data = run_training_pipeline(args)
-        
-        # Save training report files
-        base_dir = Path(__file__).resolve().parent.parent
-        
-        report_json_path = base_dir / "artifacts" / "training_report.json"
-        report_md_path = base_dir / "artifacts" / "training_report.md"
-        
-        report_json_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        with open(report_json_path, "w") as f:
-            json.dump(report_data, f, indent=4)
-        logger.info(f"JSON training report written to: {report_json_path}")
-        
-        md_content = generate_markdown_report(report_data)
-        with open(report_md_path, "w") as f:
-            f.write(md_content)
-        logger.info(f"Markdown training report written to: {report_md_path}")
-        
+        report, _ = run_training_pipeline(args)
+        logger.info(f"Training pipeline execution completed successfully. Output saved to: {report['output_directory']}")
     except Exception as e:
         logger.error(f"Training pipeline execution failed: {e}")
         sys.exit(1)
