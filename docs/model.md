@@ -138,3 +138,36 @@ python -m ml_pipeline.inference \
     --output artifacts/predictions/result.jpg
 ```
 
+---
+
+## 7. YOLO Dataset Preparation Pipeline
+
+A production-quality data preparation pipeline `prepare_dataset.py` parses standard COCO annotations, filters target objects, repairs coordinates, structures YOLO folder trees, and outputs a validation summary report.
+
+### 7.1 Key Features
+
+- **Class Mapping:** Dynamically filters COCO categories (specifically COCO category ID 14 `trash_plastic` mapped to YOLO Class 0 `plastic`).
+- **Annotation Correction:** Safely clips minor out-of-bounds coordinate overflows to images boundary sizes. Discards invalid elements where dimensions fall to zero or negative.
+- **Split Consistency Checks:** Validates complete 1-to-1 matches for training and validation image sets, ensuring no orphan labels or missing annotations exist in final splits.
+
+### 7.2 Running via CLI
+
+Run the preparation pipeline by passing the dataset root directory:
+
+```bash
+python -m ml_pipeline.prepare_dataset --dataset-root "C:\Users\Harsha\Downloads\dataset\dataset"
+```
+
+The script cleans up existing folders and structures the dataset under:
+```text
+artifacts/dataset/yolo/
+├── images/
+│   ├── train/
+│   └── val/
+├── labels/
+│   ├── train/
+│   └── val/
+└── dataset.yaml
+```
+
+
