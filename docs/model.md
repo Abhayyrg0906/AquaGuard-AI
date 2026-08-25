@@ -89,3 +89,52 @@ To meet the non-functional requirement of single-image latency `< 200ms` on typi
    ```
 2. **ONNX Runtime (ORT):** The FastAPI production server will execute the model using `onnxruntime` instead of PyTorch, bypassing the large PyTorch library footprint and speeding up CPU inference.
 3. **NMS Post-Processing:** Non-Maximum Suppression (NMS) will be handled in standard NumPy/Python or bundled directly in the ONNX graph to reduce serving latency.
+
+---
+
+## 6. Single-Image Inference Engine
+
+A production-grade Python inference wrapper `PlasticDetector` is implemented in `ml_pipeline/inference.py` to facilitate local testing and modular reuse.
+
+### 6.1 Programmatic Usage
+
+The class accepts image file paths or numpy arrays:
+
+```python
+from ml_pipeline.inference import PlasticDetector
+
+# Initialize the detector
+detector = PlasticDetector(
+    model_path="artifacts/training/baseline/weights/best.pt",
+    confidence=0.25,
+    iou=0.45
+)
+
+# 1. Run prediction only (returns a dict conforming to strict output schemas)
+results = detector.predict("path/to/image.jpg")
+print(results)
+
+# 2. Run prediction and save annotated output image
+results = detector.annotate(
+    source="path/to/image.jpg",
+    output_path="artifacts/predictions/result.jpg"
+)
+```
+
+### 6.2 Command Line Interface (CLI)
+
+Run single-image prediction via CLI:
+
+```bash
+# Print structured json prediction output
+python -m ml_pipeline.inference \
+    --model artifacts/training/baseline/weights/best.pt \
+    --source path/to/image.jpg
+
+# Save annotated image drawing bounding boxes
+python -m ml_pipeline.inference \
+    --model artifacts/training/baseline/weights/best.pt \
+    --source path/to/image.jpg \
+    --output artifacts/predictions/result.jpg
+```
+
