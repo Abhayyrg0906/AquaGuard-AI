@@ -142,32 +142,38 @@ python -m ml_pipeline.inference \
 
 ## 7. YOLO Dataset Preparation Pipeline
 
-A production-quality data preparation pipeline `prepare_dataset.py` parses standard COCO annotations, filters target objects, repairs coordinates, structures YOLO folder trees, and outputs a validation summary report.
+A production-quality data preparation pipeline `prepare_yolo.py` parses standard COCO annotations, dynamically filters target objects, repairs boundary overflows, structures YOLO folder trees, and outputs JSON and Markdown reports.
 
 ### 7.1 Key Features
 
-- **Class Mapping:** Dynamically filters COCO categories (specifically COCO category ID 14 `trash_plastic` mapped to YOLO Class 0 `plastic`).
+- **Class Mapping:** Dynamically discovers COCO categories (specifically matching name `"trash_plastic"` and mapping it to YOLO Class 0 `"plastic"`).
 - **Annotation Correction:** Safely clips minor out-of-bounds coordinate overflows to images boundary sizes. Discards invalid elements where dimensions fall to zero or negative.
-- **Split Consistency Checks:** Validates complete 1-to-1 matches for training and validation image sets, ensuring no orphan labels or missing annotations exist in final splits.
+- **Split Separation:** Preserves train/validation separation and copies only required plastic-containing images.
+- **Idempotency:** Utilizes file size and content comparisons to prevent unnecessary file copying and label rewriting when rerun.
 
 ### 7.2 Running via CLI
 
-Run the preparation pipeline by passing the dataset root directory:
+Run the preparation pipeline by passing the dataset root and optionally a custom output directory:
 
 ```bash
-python -m ml_pipeline.prepare_dataset --dataset-root "C:\Users\Harsha\Downloads\dataset\dataset"
+python -m ml_pipeline.prepare_yolo \
+    --dataset-root "C:\Users\Harsha\Downloads\dataset\dataset" \
+    --output-dir "artifacts/yolo_dataset"
 ```
 
-The script cleans up existing folders and structures the dataset under:
+The script structures the dataset under:
 ```text
-artifacts/dataset/yolo/
+artifacts/yolo_dataset/
 ├── images/
 │   ├── train/
 │   └── val/
 ├── labels/
 │   ├── train/
 │   └── val/
-└── dataset.yaml
+├── dataset.yaml
+├── preparation_report.json
+└── preparation_report.md
 ```
+
 
 
