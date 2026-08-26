@@ -234,15 +234,19 @@ def run_training_pipeline(args: argparse.Namespace) -> Tuple[Dict[str, Any], str
     
     start_time = time.perf_counter()
     
+    # Resolve project path to absolute to avoid relative path resolution issues
+    project_abs = Path(args.project).resolve()
+    
     train_kwargs = {
         "data": str(yaml_path),
         "epochs": args.epochs,
         "imgsz": args.imgsz,
         "batch": args.batch,
-        "project": args.project,
+        "project": str(project_abs),
         "name": args.name,
         "device": device,
         "deterministic": True,
+        "exist_ok": True,
         "verbose": False
     }
     
@@ -260,9 +264,22 @@ def run_training_pipeline(args: argparse.Namespace) -> Tuple[Dict[str, Any], str
     
     metrics = extract_metrics(val_results)
     
-    # Organize outputs
-    run_dir = Path(args.project) / args.name
+    # Derive actual save directory from trainer
+    if hasattr(model, "trainer") and model.trainer is not None and getattr(model.trainer, "save_dir", None) is not None:
+        run_dir = Path(model.trainer.save_dir).resolve()
+    else:
+        run_dir = (project_abs / args.name).resolve()
     run_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Gather environment metadata
+    pytorch_version = "unknown"
+    if torch is not None:
+        pytorch_version = getattr(torch, "__version__", "unknown")
+        
+    best_model_path = run_dir / "weights" / "best.pt"
+    last_model_path = run_dir / "weights" / "last.pt"
+    best_model_path_str = str(best_model_path.resolve()).replace("\\", "/")
+    last_model_path_str = str(last_model_path.resolve()).replace("\\", "/")
     
     report_data = {
         "precision": metrics["precision"],
@@ -274,14 +291,27 @@ def run_training_pipeline(args: argparse.Namespace) -> Tuple[Dict[str, Any], str
             "imgsz": args.imgsz,
             "batch": args.batch,
             "model_name": args.model,
-            "device": device
+            "device": device,
+            "deterministic": True
         },
         "model_name": args.model,
         "dataset_path": str(yaml_path.resolve()).replace("\\", "/"),
         "device": device,
         "timestamp": datetime.now().isoformat(),
         "duration": duration_str,
-        "output_directory": str(run_dir.resolve()).replace("\\", "/")
+        "output_directory": str(run_dir.resolve()).replace("\\", "/"),
+        
+        # Reproducibility / Experiment Metadata
+        "python_version": platform.python_version(),
+        "ultralytics_version": ultralytics_version,
+        "pytorch_version": pytorch_version,
+        "os_platform": platform.platform(),
+        "epochs": args.epochs,
+        "imgsz": args.imgsz,
+        "batch": args.batch,
+        "actual_output_directory": str(run_dir.resolve()).replace("\\", "/"),
+        "best_checkpoint_path": best_model_path_str,
+        "last_checkpoint_path": last_model_path_str
     }
     
     # Save metrics.json
@@ -290,8 +320,6 @@ def run_training_pipeline(args: argparse.Namespace) -> Tuple[Dict[str, Any], str
         json.dump(report_data, f, indent=4)
         
     # Generate Markdown Report
-    best_model_path = run_dir / "weights" / "best.pt"
-    best_model_path_str = str(best_model_path.resolve()).replace("\\", "/")
     md_content = f"""# AquaGuard AI - Baseline Training Report
 
 **Report Generation Timestamp:** {report_data["timestamp"]}

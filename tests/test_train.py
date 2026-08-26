@@ -128,6 +128,16 @@ def test_run_training_pipeline_success(mock_yolo, temp_dataset_yaml):
     mock_model_instance.val.return_value = mock_val_results
     
     with tempfile.TemporaryDirectory() as tmp_out:
+        # Mock the YOLO trainer's save_dir dynamically
+        mock_trainer = MagicMock()
+        mock_trainer.save_dir = Path(tmp_out) / "baseline"
+        mock_model_instance.trainer = mock_trainer
+        
+        # Touch mock weight files inside the expected output directory
+        (Path(tmp_out) / "baseline" / "weights").mkdir(parents=True, exist_ok=True)
+        (Path(tmp_out) / "baseline" / "weights" / "best.pt").touch()
+        (Path(tmp_out) / "baseline" / "weights" / "last.pt").touch()
+        
         args = argparse.Namespace(
             data=str(temp_dataset_yaml),
             model="yolov8n.pt",
@@ -147,3 +157,7 @@ def test_run_training_pipeline_success(mock_yolo, temp_dataset_yaml):
         assert report["precision"] == 0.90
         assert report["mAP50"] == 0.85
         assert "0.8500" in md
+        
+        # Artifact consistency validation: verify reported path points to a file that actually exists
+        assert Path(report["best_checkpoint_path"]).exists() is True
+        assert Path(report["last_checkpoint_path"]).exists() is True

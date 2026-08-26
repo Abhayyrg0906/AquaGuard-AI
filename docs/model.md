@@ -196,18 +196,20 @@ Execute the training pipeline via the command line interface:
 python -m ml_pipeline.train \
     --data artifacts/yolo_dataset/dataset.yaml \
     --model yolov8n.pt \
-    --epochs 10 \
-    --batch 16 \
+    --epochs 3 \
     --imgsz 640 \
+    --batch 8 \
+    --device cpu \
     --project artifacts/training \
-    --name baseline
+    --name smoke-test
 ```
 
-### 8.3 Generated Artifacts
+### 8.3 Real Output Directory & Checkpoint Behavior
 
-Upon completion, the run results and metrics are structured inside the target experiment directory:
+To resolve path discrepancies across environments, the pipeline queries the actual training directory via the Ultralytics API (`model.trainer.save_dir`). The outputs are guaranteed to be saved in a predictable structure:
+
 ```text
-artifacts/training/baseline/
+artifacts/training/<run-name>/
 ├── weights/
 │   ├── best.pt
 │   └── last.pt
@@ -215,8 +217,58 @@ artifacts/training/baseline/
 └── training_report.md
 ```
 
-- **`metrics.json`**: Machine-readable JSON summary containing final precision, recall, mAP50, mAP50-95, elapsed duration, hardware details, and hyperparameters configuration.
-- **`training_report.md`**: Human-readable Markdown summary report detailing final validation metrics and checkpoint paths.
+- **`weights/best.pt`**: Best model weights checkpoint selected based on validation performance metrics.
+- **`weights/last.pt`**: Weights from the final training epoch.
+- **`metrics.json`**: Machine-readable JSON summary containing final precision, recall, mAP50, mAP50-95, environment metadata (Python/Torch/Ultralytics versions), duration, and output directories.
+- **`training_report.md`**: Human-readable Markdown summary report.
+
+### 8.4 Smoke Test vs. Production Training
+
+A CPU-only smoke test has been executed with the following configuration and observed validation metrics:
+
+- **Hyperparameters:**
+  - **Model:** `yolov8n.pt`
+  - **Epochs:** 3
+  - **Image Size:** 640px
+  - **Batch Size:** 8
+  - **Device:** `cpu`
+  - **Duration:** ~35m 13s
+
+- **Observed Smoke-Test Metrics:**
+  - **Precision:** 0.7227
+  - **Recall:** 0.5856
+  - **mAP@0.5:** 0.6631
+  - **mAP@0.5:0.95:** 0.4250
+
+> [!NOTE]
+> The 3-epoch CPU run serves strictly as a validation smoke test. Production models require significantly more epochs (e.g., 50–100) and GPU execution to achieve optimal convergence and generalization.
+
+---
+
+## 9. Model Evaluation Pipeline
+
+The model evaluation pipeline `evaluate.py` provides automated testing of trained YOLO models against validation splits.
+
+### 9.1 Evaluation CLI
+
+Run model evaluation by specifying the weights checkpoint path:
+
+```bash
+python -m ml_pipeline.evaluate \
+    --model artifacts/training/smoke-test/weights/best.pt \
+    --data artifacts/yolo_dataset/dataset.yaml \
+    --device cpu \
+    --output artifacts/evaluation
+```
+
+If `--output` is provided, `metrics.json` and `evaluation_report.md` are saved inside that directory.
+
+### 9.2 Metrics Definitions
+
+- **Precision (P):** The ratio of correctly predicted positive detections to all predicted detections (avoiding false alarms).
+- **Recall (R):** The ratio of correctly predicted positive detections to all actual positive items (avoiding missed plastics).
+- **mAP@0.5:** Mean Average Precision calculated at an Intersection over Union (IoU) threshold of 0.5.
+- **mAP@0.5:0.95:** Mean Average Precision averaged over IoU thresholds from 0.5 to 0.95 in steps of 0.05.
 
 
 
