@@ -310,6 +310,10 @@ def main():
     args = parser.parse_args()
     
     try:
+        source_path = Path(args.source)
+        if not source_path.exists():
+            raise FileNotFoundError(f"Source path does not exist: {source_path}")
+            
         detector = PlasticDetector(
             model_path=args.model,
             confidence=args.confidence,
@@ -317,7 +321,6 @@ def main():
             device=args.device
         )
         
-        source_path = Path(args.source)
         if source_path.is_dir():
             if not args.output:
                 raise ValueError("Output directory (--output) is required when source is a directory.")
@@ -329,8 +332,11 @@ def main():
                 max_images=args.max_images
             )
             print(json.dumps(result["summary"], indent=4))
-        else:
+        elif source_path.is_file():
             if args.output:
+                out_path = Path(args.output)
+                if out_path.exists() and out_path.is_dir():
+                    raise ValueError(f"Output path must be a file path, not a directory: {out_path}")
                 logger.info(f"Running prediction and annotation on: {args.source}")
                 result = detector.annotate(args.source, args.output)
             else:
@@ -338,6 +344,8 @@ def main():
                 result = detector.predict(args.source)
                 
             print(json.dumps(result, indent=4))
+        else:
+            raise ValueError(f"Source path must be a file or directory: {source_path}")
             
     except Exception as e:
         logger.error(f"Inference run failed: {e}")

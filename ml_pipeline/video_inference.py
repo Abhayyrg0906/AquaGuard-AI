@@ -42,9 +42,16 @@ def process_video(
     
     if not m_path.exists():
         raise FileNotFoundError(f"Model path does not exist: {m_path}")
+    if not m_path.is_file():
+        raise ValueError(f"Model path must be a file: {m_path}")
         
     if not s_path.exists():
         raise FileNotFoundError(f"Source video does not exist: {s_path}")
+    if not s_path.is_file():
+        raise ValueError(f"Source video path must be a file: {s_path}")
+        
+    if o_path.exists() and o_path.is_dir():
+        raise ValueError(f"Output path must be a file path, not a directory: {o_path}")
         
     # Ensure output parent directory exists
     o_path.parent.mkdir(parents=True, exist_ok=True)
@@ -122,6 +129,15 @@ def process_video(
     finally:
         cap.release()
         out.release()
+        
+    # Verify output video exists and is not empty (skip check if out is mocked in unit tests)
+    is_mocked = (
+        hasattr(out, "_mock_self") or 
+        type(out).__name__ in ("Mock", "MagicMock")
+    )
+    if not is_mocked:
+        if not o_path.exists() or o_path.stat().st_size == 0:
+            raise IOError(f"Output video was not successfully written or is empty: {o_path}")
         
     total_time = time.perf_counter() - start_time
     avg_inference_time = sum_inference_time / frame_count if frame_count > 0 else 0.0

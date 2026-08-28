@@ -210,3 +210,98 @@ def test_multi_image_inference(mock_yolo, dummy_model_file):
             max_images=1
         )
         assert res_limit["summary"]["images_processed"] == 1
+
+@patch("ml_pipeline.inference.run_multi_image_inference")
+@patch("ml_pipeline.inference.PlasticDetector")
+def test_inference_main_directory(mock_detector_class, mock_run_multi):
+    import sys
+    mock_detector = MagicMock()
+    mock_detector_class.return_value = mock_detector
+    
+    mock_run_multi.return_value = {"summary": {"test": 1}}
+    
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        test_args = [
+            "inference.py",
+            "--model", "dummy.pt",
+            "--source", tmp_dir,
+            "--output", "dummy_out",
+            "--max-images", "10"
+        ]
+        with patch.object(sys, "argv", test_args):
+            with patch("builtins.print") as mock_print:
+                from ml_pipeline.inference import main as cli_main
+                cli_main()
+                mock_run_multi.assert_called_once_with(
+                    detector=mock_detector,
+                    source_dir=tmp_dir,
+                    output_dir="dummy_out",
+                    max_images=10
+                )
+
+
+@patch("ml_pipeline.inference.PlasticDetector")
+def test_inference_main_directory_missing_output(mock_detector_class):
+    import sys
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        test_args = [
+            "inference.py",
+            "--model", "dummy.pt",
+            "--source", tmp_dir
+        ]
+        with patch.object(sys, "argv", test_args):
+            from ml_pipeline.inference import main as cli_main
+            with pytest.raises(SystemExit) as exc:
+                cli_main()
+            assert exc.value.code == 1
+
+
+@patch("ml_pipeline.inference.PlasticDetector")
+def test_inference_main_single_image(mock_detector_class, dummy_image_file):
+    import sys
+    mock_detector = MagicMock()
+    mock_detector_class.return_value = mock_detector
+    mock_detector.predict.return_value = {"test": 1}
+    
+    test_args = [
+        "inference.py",
+        "--model", "dummy.pt",
+        "--source", str(dummy_image_file)
+    ]
+    with patch.object(sys, "argv", test_args):
+        with patch("builtins.print") as mock_print:
+            from ml_pipeline.inference import main as cli_main
+            cli_main()
+            mock_detector.predict.assert_called_once_with(str(dummy_image_file))
+
+
+@patch("ml_pipeline.inference.PlasticDetector")
+def test_inference_main_invalid_source(mock_detector_class):
+    import sys
+    test_args = [
+        "inference.py",
+        "--model", "dummy.pt",
+        "--source", "nonexistent_file_path_xyz.jpg"
+    ]
+    with patch.object(sys, "argv", test_args):
+        from ml_pipeline.inference import main as cli_main
+        with pytest.raises(SystemExit) as exc:
+            cli_main()
+        assert exc.value.code == 1
+
+
+@patch("ml_pipeline.inference.PlasticDetector")
+def test_inference_main_output_is_directory(mock_detector_class, dummy_image_file):
+    import sys
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        test_args = [
+            "inference.py",
+            "--model", "dummy.pt",
+            "--source", str(dummy_image_file),
+            "--output", tmp_dir
+        ]
+        with patch.object(sys, "argv", test_args):
+            from ml_pipeline.inference import main as cli_main
+            with pytest.raises(SystemExit) as exc:
+                cli_main()
+            assert exc.value.code == 1

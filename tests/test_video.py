@@ -131,3 +131,85 @@ def test_video_cli_parser(mock_process):
             iou=0.55,
             device="cuda:0"
         )
+
+def test_process_video_source_is_directory(dummy_model_file):
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        with pytest.raises(ValueError, match="Source video path must be a file"):
+            process_video(
+                model_path=str(dummy_model_file),
+                source_path=tmp_dir,
+                output_path="out.mp4"
+            )
+
+
+def test_process_video_model_is_directory(dummy_video_file):
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        with pytest.raises(ValueError, match="Model path must be a file"):
+            process_video(
+                model_path=tmp_dir,
+                source_path=str(dummy_video_file),
+                output_path="out.mp4"
+            )
+
+
+def test_process_video_output_is_directory(dummy_model_file, dummy_video_file):
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        with pytest.raises(ValueError, match="Output path must be a file path"):
+            process_video(
+                model_path=str(dummy_model_file),
+                source_path=str(dummy_video_file),
+                output_path=tmp_dir
+            )
+
+
+@patch("ml_pipeline.video_inference.process_video")
+def test_video_cli_main_failure(mock_process):
+    mock_process.side_effect = ValueError("Mock validation failure")
+    test_args = [
+        "video_inference.py",
+        "--model", "model.pt",
+        "--source", "video.mp4",
+        "--output", "out.mp4"
+    ]
+    with patch.object(sys, "argv", test_args):
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 1
+
+
+@patch("ml_pipeline.video_inference.cv2.VideoCapture")
+@patch("ml_pipeline.video_inference.cv2.VideoWriter")
+@patch("ml_pipeline.video_inference.PlasticDetector")
+def test_process_video_writer_fails_to_write(mock_detector_class, mock_video_writer, mock_video_capture, dummy_model_file, dummy_video_file):
+    # Setup mock VideoCapture
+    mock_cap = MagicMock()
+    mock_cap.isOpened.return_value = True
+    mock_cap.read.side_effect = [(False, None)]
+    mock_cap.get.side_effect = lambda prop: {
+        3: 640.0, # CAP_PROP_FRAME_WIDTH
+        4: 480.0, # CAP_PROP_FRAME_HEIGHT
+        5: 30.0   # CAP_PROP_FPS
+    }.get(prop, 0.0)
+    mock_video_capture.return_value = mock_cap
+    
+    # Setup custom video writer that is not detected as a mock
+    class DummyVideoWriter:
+        def isOpened(self):
+            return True
+        def write(self, frame):
+            pass
+        def release(self):
+            pass
+            
+    mock_video_writer.return_value = DummyVideoWriter()
+    
+    # Setup mock PlasticDetector
+    mock_detector = MagicMock()
+    mock_detector_class.return_value = mock_detector
+    
+    with pytest.raises(IOError, match="Output video was not successfully written"):
+        process_video(
+            model_path=str(dummy_model_file),
+            source_path=str(dummy_video_file),
+            output_path="nonexistent_output_file_xyz.mp4"
+        )

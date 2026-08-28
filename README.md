@@ -76,3 +76,113 @@ AquaGuard-AI/
 ├── CONTRIBUTING.md       # Contribution guidelines
 └── README.md             # Project documentation
 ```
+
+---
+
+## ML Pipeline Workflow
+
+The ML Pipeline in this repository operates in a sequential flow from dataset preparation to inference:
+
+```
+    Dataset Preparation
+            ↓
+      Model Training
+            ↓
+     Model Evaluation
+            ↓
+  Batch Image Inference
+            ↓
+  Video Stream Inference
+```
+
+### 1. Dataset Preparation
+Ensure the raw COCO format dataset is downloaded and prepared. Run the preparation script:
+```bash
+python -m ml_pipeline.prepare_dataset
+```
+
+### 2. Model Training
+To train the baseline model (10 epochs on CPU):
+```bash
+python -m ml_pipeline.train \
+    --data "artifacts/yolo_dataset/dataset.yaml" \
+    --model "yolov8n.pt" \
+    --epochs 10 \
+    --imgsz 640 \
+    --batch 8 \
+    --device cpu \
+    --project "artifacts/training" \
+    --name "baseline-10ep"
+```
+
+### 3. Model Evaluation
+To evaluate the trained model on the validation split:
+```bash
+python -m ml_pipeline.evaluate \
+    --model "artifacts/training/baseline-10ep/weights/best.pt" \
+    --data "artifacts/yolo_dataset/dataset.yaml" \
+    --device cpu \
+    --output "artifacts/evaluation/baseline-10ep"
+```
+
+### 4. Image Inference
+To perform inference on a single image and save the annotated output:
+```bash
+python -m ml_pipeline.inference \
+    --model "artifacts/training/baseline-10ep/weights/best.pt" \
+    --source "path/to/image.jpg" \
+    --output "artifacts/predictions/annotated_single.jpg"
+```
+To run batch inference on 20 validation images:
+```bash
+python -m ml_pipeline.inference \
+    --model "artifacts/training/baseline-10ep/weights/best.pt" \
+    --source "artifacts/yolo_dataset/images/val" \
+    --output "artifacts/predictions" \
+    --max-images 20
+```
+
+### 5. Video Inference
+To run sequential inference on an input video:
+```bash
+python -m ml_pipeline.video_inference \
+    --model "artifacts/training/baseline-10ep/weights/best.pt" \
+    --source "artifacts/sample_data/synthetic_test.mp4" \
+    --output "artifacts/predictions/baseline-10ep-video.mp4" \
+    --device cpu
+```
+
+---
+
+## Current Trained Baseline
+
+- **Model Checkpoint:** `artifacts/training/baseline-10ep/weights/best.pt`
+- **Validation Dataset:** 341 images, 374 instances
+- **Baseline Metrics:**
+  - **Precision:** 0.8344
+  - **Recall:** 0.6765
+  - **mAP@0.5:** 0.7941
+  - **mAP@0.5:0.95:** 0.5490
+
+---
+
+## Current Inference & Video Artifacts
+
+- **Batch Predictions:** Annotated validation images `test-1.jpg` to `test-20.jpg` are generated under `artifacts/predictions/` alongside a detection report at `artifacts/predictions/predictions.json`.
+- **Processed Video:** The processed validation video is output to `artifacts/predictions/baseline-10ep-video.mp4` showing frame-by-frame annotations.
+
+---
+
+## Current Limitations & Next Improvements
+
+### Current Limitations:
+1. **Single-Class Baseline:** The model is currently a plastic-only detection model (class 0: `plastic`).
+2. **CPU Throughput Constraint:** Video processing runs at approximately 7.51 FPS with an average latency of 127 ms per frame on CPU, which does not meet real-time requirements (>30 FPS).
+3. **Environmental Occlusions & Glare:** Floating debris can be partially hidden by aquatic vegetation or obscured by water surface reflection glares.
+
+### Next Improvements:
+1. **GPU Scale Training:** Fine-tune for longer epochs (50–100) using GPU acceleration.
+2. **Multi-Class Detection:** Extend the model taxonomy to other forms of marine pollution (e.g. glass, metal, wood).
+3. **Data Augmentation:** Integrate brightness, contrast, water reflections, and occlusion data augmentations to increase model robustness.
+4. **Model Optimization:** Export to TensorRT or ONNX formats to optimize throughput for real-time edge deployments.
+```
