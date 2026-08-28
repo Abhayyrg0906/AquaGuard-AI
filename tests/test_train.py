@@ -161,3 +161,74 @@ def test_run_training_pipeline_success(mock_yolo, temp_dataset_yaml):
         # Artifact consistency validation: verify reported path points to a file that actually exists
         assert Path(report["best_checkpoint_path"]).exists() is True
         assert Path(report["last_checkpoint_path"]).exists() is True
+
+
+@patch("ml_pipeline.train.YOLO")
+def test_run_training_pipeline_extended_configs(mock_yolo, temp_dataset_yaml):
+    # Setup files and folders
+    train_img = temp_dataset_yaml.parent / "images" / "train"
+    train_lbl = temp_dataset_yaml.parent / "labels" / "train"
+    val_img = temp_dataset_yaml.parent / "images" / "val"
+    val_lbl = temp_dataset_yaml.parent / "labels" / "val"
+    (train_img / "img1.jpg").touch()
+    (train_lbl / "img1.txt").touch()
+    (val_img / "val1.jpg").touch()
+    (val_lbl / "val1.txt").touch()
+    
+    mock_model_instance = MagicMock()
+    mock_yolo.return_value = mock_model_instance
+    mock_model_instance.train.return_value = "training"
+    
+    mock_val_results = MagicMock()
+    mock_box = MagicMock()
+    mock_box.mp = 0.90
+    mock_box.mr = 0.80
+    mock_box.map50 = 0.85
+    mock_box.map = 0.60
+    mock_val_results.box = mock_box
+    mock_model_instance.val.return_value = mock_val_results
+    
+    with tempfile.TemporaryDirectory() as tmp_out:
+        mock_trainer = MagicMock()
+        mock_trainer.save_dir = Path(tmp_out) / "baseline"
+        mock_model_instance.trainer = mock_trainer
+        
+        (Path(tmp_out) / "baseline" / "weights").mkdir(parents=True, exist_ok=True)
+        (Path(tmp_out) / "baseline" / "weights" / "best.pt").touch()
+        (Path(tmp_out) / "baseline" / "weights" / "last.pt").touch()
+        
+        args = argparse.Namespace(
+            data=str(temp_dataset_yaml),
+            model="yolov8n.pt",
+            epochs=3,
+            imgsz=640,
+            batch=16,
+            project=tmp_out,
+            name="baseline",
+            device="cpu",
+            seed=42,
+            lr0=0.01,
+            optimizer="AdamW",
+            patience=5,
+            workers=4,
+            mosaic=1.0
+        )
+        
+        report, _ = run_training_pipeline(args)
+        
+        # Verify custom args were passed to YOLO train method
+        called_args, called_kwargs = mock_model_instance.train.call_args
+        assert called_kwargs["seed"] == 42
+        assert called_kwargs["lr0"] == 0.01
+        assert called_kwargs["optimizer"] == "AdamW"
+        assert called_kwargs["patience"] == 5
+        assert called_kwargs["workers"] == 4
+        assert called_kwargs["mosaic"] == 1.0
+        
+        # Verify JSON report structure
+        assert report["training_configuration"]["seed"] == 42
+        assert report["training_configuration"]["lr0"] == 0.01
+        assert report["training_configuration"]["optimizer"] == "AdamW"
+        assert report["training_configuration"]["patience"] == 5
+        assert report["training_configuration"]["workers"] == 4
+        assert report["training_configuration"]["mosaic"] == 1.0

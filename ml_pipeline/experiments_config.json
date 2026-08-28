@@ -1,0 +1,60 @@
+{
+    "experiments": [
+        {
+            "id": "exp-01-baseline",
+            "description": "Current baseline 10-epoch CPU configuration",
+            "model": "yolov8n.pt",
+            "epochs": 10,
+            "imgsz": 640,
+            "batch": 8,
+            "seed": 42,
+            "lr0": null,
+            "optimizer": "auto",
+            "patience": 50,
+            "workers": 8,
+            "mosaic": 1.0
+        },
+        {
+            "id": "exp-02-longer-training",
+            "description": "Train for 30 epochs with baseline parameters to evaluate convergence",
+            "model": "yolov8n.pt",
+            "epochs": 30,
+            "imgsz": 640,
+            "batch": 8,
+            "seed": 42,
+            "lr0": null,
+            "optimizer": "auto",
+            "patience": 10,
+            "workers": 8,
+            "mosaic": 1.0
+        },
+        {
+            "id": "exp-03-augmentation-adamw",
+            "description": "Train for 30 epochs using AdamW optimizer and reduced mosaic augmentation",
+            "model": "yolov8n.pt",
+            "epochs": 30,
+            "imgsz": 640,
+            "batch": 8,
+            "seed": 42,
+            "lr0": 0.001,
+            "optimizer": "AdamW",
+            "patience": 10,
+            "workers": 8,
+            "mosaic": 0.5
+        },
+        {
+            "id": "exp-04-yolov8-small",
+            "description": "Benchmark the slightly larger yolov8s.pt model to compare accuracy vs CPU latency",
+            "model": "yolov8s.pt",
+            "epochs": 10,
+            "imgsz": 640,
+            "batch": 8,
+            "seed": 42,
+            "lr0": null,
+            "optimizer": "auto",
+            "patience": 50,
+            "workers": 8,
+            "mosaic": 1.0
+        }
+    ]
+}

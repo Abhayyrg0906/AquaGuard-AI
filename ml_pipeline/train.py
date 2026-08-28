@@ -251,6 +251,16 @@ def run_training_pipeline(args: argparse.Namespace) -> Tuple[Dict[str, Any], str
     }
     if getattr(args, "seed", None) is not None:
         train_kwargs["seed"] = args.seed
+    if getattr(args, "lr0", None) is not None:
+        train_kwargs["lr0"] = args.lr0
+    if getattr(args, "optimizer", None) is not None:
+        train_kwargs["optimizer"] = args.optimizer
+    if getattr(args, "patience", None) is not None:
+        train_kwargs["patience"] = args.patience
+    if getattr(args, "workers", None) is not None:
+        train_kwargs["workers"] = args.workers
+    if getattr(args, "mosaic", None) is not None:
+        train_kwargs["mosaic"] = args.mosaic
     
     logger.info("Executing training...")
     model.train(**train_kwargs)
@@ -304,7 +314,13 @@ def run_training_pipeline(args: argparse.Namespace) -> Tuple[Dict[str, Any], str
             "batch": args.batch,
             "model_name": args.model,
             "device": device,
-            "deterministic": True
+            "deterministic": True,
+            "seed": args.seed if getattr(args, "seed", None) is not None else None,
+            "lr0": args.lr0 if getattr(args, "lr0", None) is not None else None,
+            "optimizer": args.optimizer if getattr(args, "optimizer", None) is not None else None,
+            "patience": args.patience if getattr(args, "patience", None) is not None else None,
+            "workers": args.workers if getattr(args, "workers", None) is not None else None,
+            "mosaic": args.mosaic if getattr(args, "mosaic", None) is not None else None
         },
         "model_name": args.model,
         "dataset_path": str(yaml_path.resolve()).replace("\\", "/"),
@@ -322,6 +338,11 @@ def run_training_pipeline(args: argparse.Namespace) -> Tuple[Dict[str, Any], str
         "imgsz": args.imgsz,
         "batch": args.batch,
         "seed": args.seed if getattr(args, "seed", None) is not None else None,
+        "lr0": args.lr0 if getattr(args, "lr0", None) is not None else None,
+        "optimizer": args.optimizer if getattr(args, "optimizer", None) is not None else None,
+        "patience": args.patience if getattr(args, "patience", None) is not None else None,
+        "workers": args.workers if getattr(args, "workers", None) is not None else None,
+        "mosaic": args.mosaic if getattr(args, "mosaic", None) is not None else None,
         "actual_output_directory": str(run_dir.resolve()).replace("\\", "/"),
         "best_checkpoint_path": best_model_path_str,
         "last_checkpoint_path": last_model_path_str
@@ -333,6 +354,11 @@ def run_training_pipeline(args: argparse.Namespace) -> Tuple[Dict[str, Any], str
         json.dump(report_data, f, indent=4)
         
     # Generate Markdown Report
+    opt_str = report_data["training_configuration"]["optimizer"] if report_data["training_configuration"]["optimizer"] is not None else "auto"
+    mosaic_str = str(report_data["training_configuration"]["mosaic"]) if report_data["training_configuration"]["mosaic"] is not None else "1.0 (default)"
+    lr0_str = str(report_data["training_configuration"]["lr0"]) if report_data["training_configuration"]["lr0"] is not None else "default"
+    patience_str = str(report_data["training_configuration"]["patience"]) if report_data["training_configuration"]["patience"] is not None else "default"
+    
     md_content = f"""# AquaGuard AI - Baseline Training Report
 
 **Report Generation Timestamp:** {report_data["timestamp"]}
@@ -344,6 +370,10 @@ def run_training_pipeline(args: argparse.Namespace) -> Tuple[Dict[str, Any], str
 - **Epochs:** {report_data["training_configuration"]["epochs"]}
 - **Image Size:** {report_data["training_configuration"]["imgsz"]}px
 - **Batch Size:** {report_data["training_configuration"]["batch"]}
+- **Optimizer:** `{opt_str}`
+- **Mosaic Augmentation:** `{mosaic_str}`
+- **Initial LR (lr0):** `{lr0_str}`
+- **Patience:** `{patience_str}`
 - **Training Duration:** {duration_str}
 
 ## 2. Evaluation Metrics (Validation Split)
@@ -419,6 +449,36 @@ def main():
         type=int,
         default=None,
         help="Random seed for deterministic training"
+    )
+    parser.add_argument(
+        "--lr0",
+        type=float,
+        default=None,
+        help="Initial learning rate (e.g. 0.01)"
+    )
+    parser.add_argument(
+        "--optimizer",
+        type=str,
+        default=None,
+        help="Optimizer name (e.g. SGD, Adam, AdamW, RMSProp)"
+    )
+    parser.add_argument(
+        "--patience",
+        type=int,
+        default=None,
+        help="Early stopping patience epochs"
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="Number of data loader workers"
+    )
+    parser.add_argument(
+        "--mosaic",
+        type=float,
+        default=None,
+        help="Mosaic augmentation probability (0.0 to 1.0)"
     )
     
     args = parser.parse_args()
