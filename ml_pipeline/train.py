@@ -249,6 +249,8 @@ def run_training_pipeline(args: argparse.Namespace) -> Tuple[Dict[str, Any], str
         "exist_ok": True,
         "verbose": False
     }
+    if getattr(args, "seed", None) is not None:
+        train_kwargs["seed"] = args.seed
     
     logger.info("Executing training...")
     model.train(**train_kwargs)
@@ -278,6 +280,16 @@ def run_training_pipeline(args: argparse.Namespace) -> Tuple[Dict[str, Any], str
         
     best_model_path = run_dir / "weights" / "best.pt"
     last_model_path = run_dir / "weights" / "last.pt"
+    
+    if not best_model_path.exists():
+        raise FileNotFoundError(
+            f"Training completed but best checkpoint weights were not found at: {best_model_path}"
+        )
+    if not last_model_path.exists():
+        raise FileNotFoundError(
+            f"Training completed but last checkpoint weights were not found at: {last_model_path}"
+        )
+        
     best_model_path_str = str(best_model_path.resolve()).replace("\\", "/")
     last_model_path_str = str(last_model_path.resolve()).replace("\\", "/")
     
@@ -309,6 +321,7 @@ def run_training_pipeline(args: argparse.Namespace) -> Tuple[Dict[str, Any], str
         "epochs": args.epochs,
         "imgsz": args.imgsz,
         "batch": args.batch,
+        "seed": args.seed if getattr(args, "seed", None) is not None else None,
         "actual_output_directory": str(run_dir.resolve()).replace("\\", "/"),
         "best_checkpoint_path": best_model_path_str,
         "last_checkpoint_path": last_model_path_str
@@ -400,6 +413,12 @@ def main():
         type=str,
         default="",
         help="Hardware device (e.g. cpu, cuda, 0)"
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Random seed for deterministic training"
     )
     
     args = parser.parse_args()

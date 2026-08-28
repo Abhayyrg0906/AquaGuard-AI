@@ -152,3 +152,61 @@ def test_annotate_method(mock_yolo, dummy_model_file, dummy_image_file):
         
         assert output_image_path.exists()
         assert res["detection_count"] == 1
+
+@patch("ml_pipeline.inference.YOLO")
+def test_multi_image_inference(mock_yolo, dummy_model_file):
+    # Mock YOLO instance and prediction results
+    mock_model_instance = MagicMock()
+    mock_model_instance.names = {0: "plastic"}
+    mock_yolo.return_value = mock_model_instance
+    
+    mock_box = MagicMock()
+    mock_box.xyxy = [[10.0, 20.0, 100.0, 200.0]]
+    mock_box.conf = [0.8]
+    mock_box.cls = [0]
+    
+    mock_result = MagicMock()
+    mock_result.orig_shape = (480, 640)
+    mock_result.boxes = [mock_box]
+    mock_model_instance.predict.return_value = [mock_result]
+    
+    detector = PlasticDetector(dummy_model_file)
+    
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        source_dir = Path(tmp_dir) / "source"
+        output_dir = Path(tmp_dir) / "output"
+        source_dir.mkdir()
+        
+        # Touch mock image files
+        from PIL import Image
+        img = Image.new("RGB", (640, 480), color="blue")
+        img.save(source_dir / "img1.jpg")
+        img.save(source_dir / "img2.png")
+        # Touch a non-image file
+        (source_dir / "dummy.txt").touch()
+        
+        from ml_pipeline.inference import run_multi_image_inference
+        
+        res = run_multi_image_inference(
+            detector=detector,
+            source_dir=source_dir,
+            output_dir=output_dir,
+            max_images=None
+        )
+        
+        assert res["summary"]["images_processed"] == 2
+        assert res["summary"]["total_detections"] == 2
+        assert res["summary"]["images_with_detections"] == 2
+        assert (output_dir / "predictions.json").exists()
+        assert (output_dir / "images" / "img1.jpg").exists()
+        assert (output_dir / "images" / "img2.png").exists()
+        assert not (output_dir / "images" / "dummy.txt").exists()
+        
+        # Test max_images limit
+        res_limit = run_multi_image_inference(
+            detector=detector,
+            source_dir=source_dir,
+            output_dir=output_dir,
+            max_images=1
+        )
+        assert res_limit["summary"]["images_processed"] == 1

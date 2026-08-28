@@ -20,12 +20,14 @@ try:
 except ImportError:
     YOLO = None
 
+SUPPORTED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
+
 class PlasticDetector:
     """
     Production-grade inference engine wrapper for AquaGuard AI waste detection.
     Loads trained YOLO models and outputs structured dictionaries.
     """
-    def __init__(self, model_path: Union[str, Path], confidence: float = 0.25, iou: float = 0.45):
+    def __init__(self, model_path: Union[str, Path], confidence: float = 0.25, iou: float = 0.45, device: str = ""):
         self.model_path = Path(model_path)
         
         # Validate model checkpoint existence
@@ -34,6 +36,7 @@ class PlasticDetector:
             
         self.confidence = confidence
         self.iou = iou
+        self.device = device
         
         if YOLO is None:
             raise ImportError("Ultralytics package is missing. Run 'pip install ultralytics'")
@@ -74,11 +77,17 @@ class PlasticDetector:
         # 2. Run model prediction with latency measuring
         start_time = time.perf_counter()
         
+        predict_kwargs = {
+            "conf": self.confidence,
+            "iou": self.iou,
+            "verbose": False
+        }
+        if self.device:
+            predict_kwargs["device"] = self.device
+            
         results = self.model.predict(
             source,
-            conf=self.confidence,
-            iou=self.iou,
-            verbose=False
+            **predict_kwargs
         )
         
         end_time = time.perf_counter()
@@ -172,6 +181,85 @@ class PlasticDetector:
         
         return pred_res
 
+def run_multi_image_inference(detector: PlasticDetector, source_dir: Union[str, Path], output_dir: Union[str, Path], max_images: int = None) -> Dict[str, Any]:
+    """
+    Runs inference on a directory of images, saves annotated images to output/images/,
+    and writes predictions.json containing summary statistics and image detections.
+    """
+    source_path = Path(source_dir)
+    out_dir = Path(output_dir)
+    
+    if not source_path.exists() or not source_path.is_dir():
+        raise FileNotFoundError(f"Source directory does not exist: {source_path}")
+        
+    # Enumerate and sort supported images
+    image_files = sorted([
+        p for p in source_path.glob("*")
+        if p.suffix.lower() in SUPPORTED_IMAGE_EXTENSIONS
+    ])
+    
+    if max_images is not None:
+        image_files = image_files[:max_images]
+        
+    logger.info(f"Found {len(image_files)} images to process in {source_path}")
+    
+    # Create directories
+    out_dir.mkdir(parents=True, exist_ok=True)
+    images_out_dir = out_dir / "images"
+    images_out_dir.mkdir(parents=True, exist_ok=True)
+    
+    results = []
+    total_images = len(image_files)
+    images_with_detections = 0
+    total_detections = 0
+    sum_confidence = 0.0
+    sum_inference_time = 0.0
+    
+    for p in image_files:
+        out_image_path = images_out_dir / p.name
+        # Run prediction and annotation
+        pred_res = detector.annotate(p, out_image_path)
+        
+        det_count = pred_res["detection_count"]
+        total_detections += det_count
+        if det_count > 0:
+            images_with_detections += 1
+            for d in pred_res["detections"]:
+                sum_confidence += d["confidence"]
+                
+        sum_inference_time += pred_res["inference_time_ms"]
+        
+        # Use relative/basename for source inside output JSON
+        pred_res_copy = pred_res.copy()
+        pred_res_copy["source"] = p.name
+        results.append(pred_res_copy)
+        
+    avg_detections = total_detections / total_images if total_images > 0 else 0.0
+    avg_confidence = sum_confidence / total_detections if total_detections > 0 else 0.0
+    avg_inference_time = sum_inference_time / total_images if total_images > 0 else 0.0
+    
+    summary = {
+        "images_processed": total_images,
+        "images_with_detections": images_with_detections,
+        "total_detections": total_detections,
+        "average_detections_per_image": float(round(avg_detections, 4)),
+        "average_confidence": float(round(avg_confidence, 4)),
+        "average_inference_time_ms": float(round(avg_inference_time, 2))
+    }
+    
+    output_data = {
+        "summary": summary,
+        "results": results
+    }
+    
+    # Write predictions.json
+    predictions_json_path = out_dir / "predictions.json"
+    with open(predictions_json_path, "w") as f:
+        json.dump(output_data, f, indent=4)
+        
+    logger.info(f"Multi-image inference prediction results saved to: {predictions_json_path}")
+    return output_data
+
 def main():
     parser = argparse.ArgumentParser(
         description="AquaGuard AI - single image inference engine runner"
@@ -186,13 +274,13 @@ def main():
         "--source",
         type=str,
         required=True,
-        help="Path to input image"
+        help="Path to input image or directory of images"
     )
     parser.add_argument(
         "--output",
         type=str,
         default=None,
-        help="Path to save annotated output image"
+        help="Path to save annotated output image (or directory for multi-image)"
     )
     parser.add_argument(
         "--confidence",
@@ -206,6 +294,18 @@ def main():
         default=0.45,
         help="Intersection-over-Union threshold"
     )
+    parser.add_argument(
+        "--max-images",
+        type=int,
+        default=None,
+        help="Maximum number of images to process when source is a directory"
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="",
+        help="Device override (e.g. cpu, cuda)"
+    )
     
     args = parser.parse_args()
     
@@ -213,18 +313,32 @@ def main():
         detector = PlasticDetector(
             model_path=args.model,
             confidence=args.confidence,
-            iou=args.iou
+            iou=args.iou,
+            device=args.device
         )
         
-        if args.output:
-            logger.info(f"Running prediction and annotation on: {args.source}")
-            result = detector.annotate(args.source, args.output)
+        source_path = Path(args.source)
+        if source_path.is_dir():
+            if not args.output:
+                raise ValueError("Output directory (--output) is required when source is a directory.")
+            logger.info(f"Running multi-image inference on directory: {args.source}")
+            result = run_multi_image_inference(
+                detector=detector,
+                source_dir=args.source,
+                output_dir=args.output,
+                max_images=args.max_images
+            )
+            print(json.dumps(result["summary"], indent=4))
         else:
-            logger.info(f"Running prediction on: {args.source}")
-            result = detector.predict(args.source)
+            if args.output:
+                logger.info(f"Running prediction and annotation on: {args.source}")
+                result = detector.annotate(args.source, args.output)
+            else:
+                logger.info(f"Running prediction on: {args.source}")
+                result = detector.predict(args.source)
+                
+            print(json.dumps(result, indent=4))
             
-        print(json.dumps(result, indent=4))
-        
     except Exception as e:
         logger.error(f"Inference run failed: {e}")
         sys.exit(1)

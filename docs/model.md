@@ -128,15 +128,29 @@ Run single-image prediction via CLI:
 ```bash
 # Print structured json prediction output
 python -m ml_pipeline.inference \
-    --model artifacts/training/baseline/weights/best.pt \
+    --model artifacts/training/baseline-20ep/weights/best.pt \
     --source path/to/image.jpg
 
 # Save annotated image drawing bounding boxes
 python -m ml_pipeline.inference \
-    --model artifacts/training/baseline/weights/best.pt \
+    --model artifacts/training/baseline-20ep/weights/best.pt \
     --source path/to/image.jpg \
     --output artifacts/predictions/result.jpg
 ```
+
+### 6.3 Multi-Image Inference
+
+Run multi-image batch inference on a directory of images via CLI:
+
+```bash
+python -m ml_pipeline.inference \
+    --model artifacts/training/baseline-20ep/weights/best.pt \
+    --source artifacts/yolo_dataset/images/val \
+    --output artifacts/predictions/baseline-20ep \
+    --max-images 25
+```
+
+This runs predictions on the first 25 sorted images in the source directory, saves annotated images inside the `output/images/` folder, and produces a summary JSON report at `output/predictions.json` recording total detections, images processed, average confidence, average inference latency, and bounding box coordinates.
 
 ---
 
@@ -269,6 +283,28 @@ If `--output` is provided, `metrics.json` and `evaluation_report.md` are saved i
 - **Recall (R):** The ratio of correctly predicted positive detections to all actual positive items (avoiding missed plastics).
 - **mAP@0.5:** Mean Average Precision calculated at an Intersection over Union (IoU) threshold of 0.5.
 - **mAP@0.5:0.95:** Mean Average Precision averaged over IoU thresholds from 0.5 to 0.95 in steps of 0.05.
+
+---
+
+## 10. Video Inference Pipeline
+
+The video inference utility `video_inference.py` processes input video files sequentially, executes object detection frame-by-frame, and outputs annotated videos with bounding box visualizations.
+
+### 10.1 Command Line Interface (CLI)
+
+Execute video inference using:
+
+```bash
+python -m ml_pipeline.video_inference \
+    --model artifacts/training/baseline-20ep/weights/best.pt \
+    --source path/to/video.mp4 \
+    --output artifacts/video/baseline-20ep.mp4 \
+    --confidence 0.25 \
+    --iou 0.45 \
+    --device cpu
+```
+
+This processes the video, writes annotated frame arrays using OpenCV `VideoWriter` (preserving resolution and frame rate), and logs real-time throughput metrics (inference latency, end-to-end processing FPS).
 
 
 
