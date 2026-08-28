@@ -128,12 +128,12 @@ Run single-image prediction via CLI:
 ```bash
 # Print structured json prediction output
 python -m ml_pipeline.inference \
-    --model artifacts/training/baseline-20ep/weights/best.pt \
+    --model artifacts/training/baseline-10ep/weights/best.pt \
     --source path/to/image.jpg
 
 # Save annotated image drawing bounding boxes
 python -m ml_pipeline.inference \
-    --model artifacts/training/baseline-20ep/weights/best.pt \
+    --model artifacts/training/baseline-10ep/weights/best.pt \
     --source path/to/image.jpg \
     --output artifacts/predictions/result.jpg
 ```
@@ -144,13 +144,13 @@ Run multi-image batch inference on a directory of images via CLI:
 
 ```bash
 python -m ml_pipeline.inference \
-    --model artifacts/training/baseline-20ep/weights/best.pt \
+    --model artifacts/training/baseline-10ep/weights/best.pt \
     --source artifacts/yolo_dataset/images/val \
-    --output artifacts/predictions/baseline-20ep \
-    --max-images 25
+    --output artifacts/predictions \
+    --max-images 20
 ```
 
-This runs predictions on the first 25 sorted images in the source directory, saves annotated images inside the `output/images/` folder, and produces a summary JSON report at `output/predictions.json` recording total detections, images processed, average confidence, average inference latency, and bounding box coordinates.
+This runs predictions on the first 20 sorted images in the source directory, saves annotated images directly inside the `artifacts/predictions/` folder (named `test-1.jpg` through `test-20.jpg`), and produces a summary JSON report at `artifacts/predictions/predictions.json` recording total detections, images processed, average confidence, average inference latency, and bounding box coordinates.
 
 ---
 
@@ -210,12 +210,12 @@ Execute the training pipeline via the command line interface:
 python -m ml_pipeline.train \
     --data artifacts/yolo_dataset/dataset.yaml \
     --model yolov8n.pt \
-    --epochs 3 \
+    --epochs 10 \
     --imgsz 640 \
     --batch 8 \
     --device cpu \
     --project artifacts/training \
-    --name smoke-test
+    --name baseline-10ep
 ```
 
 ### 8.3 Real Output Directory & Checkpoint Behavior
@@ -236,26 +236,37 @@ artifacts/training/<run-name>/
 - **`metrics.json`**: Machine-readable JSON summary containing final precision, recall, mAP50, mAP50-95, environment metadata (Python/Torch/Ultralytics versions), duration, and output directories.
 - **`training_report.md`**: Human-readable Markdown summary report.
 
-### 8.4 Smoke Test vs. Production Training
+### 8.4 Smoke Test vs. Baseline Training
 
-A CPU-only smoke test has been executed with the following configuration and observed validation metrics:
+The pipeline has been verified through a short 3-epoch smoke test and a longer 10-epoch baseline training run on CPU:
 
-- **Hyperparameters:**
+- **3-Epoch Smoke Test Hyperparameters & Metrics:**
   - **Model:** `yolov8n.pt`
   - **Epochs:** 3
   - **Image Size:** 640px
   - **Batch Size:** 8
   - **Device:** `cpu`
   - **Duration:** ~35m 13s
-
-- **Observed Smoke-Test Metrics:**
   - **Precision:** 0.7227
   - **Recall:** 0.5856
   - **mAP@0.5:** 0.6631
   - **mAP@0.5:0.95:** 0.4250
 
+- **10-Epoch Baseline Hyperparameters & Metrics:**
+  - **Model:** `yolov8n.pt`
+  - **Epochs:** 10
+  - **Image Size:** 640px
+  - **Batch Size:** 8
+  - **Device:** `cpu`
+  - **Deterministic:** `true`
+  - **Duration:** ~1h 27m
+  - **Precision:** 0.8344
+  - **Recall:** 0.6765
+  - **mAP@0.5:** 0.7941
+  - **mAP@0.5:0.95:** 0.5490
+
 > [!NOTE]
-> The 3-epoch CPU run serves strictly as a validation smoke test. Production models require significantly more epochs (e.g., 50–100) and GPU execution to achieve optimal convergence and generalization.
+> The 3-epoch CPU run serves strictly as a validation smoke test. The 10-epoch baseline training run establishes our custom baseline weights checkpoint, improving average precision significantly. Production models will require more epochs (e.g., 50–100) and GPU execution to achieve optimal convergence and generalization.
 
 ---
 
@@ -269,10 +280,10 @@ Run model evaluation by specifying the weights checkpoint path:
 
 ```bash
 python -m ml_pipeline.evaluate \
-    --model artifacts/training/smoke-test/weights/best.pt \
+    --model artifacts/training/baseline-10ep/weights/best.pt \
     --data artifacts/yolo_dataset/dataset.yaml \
     --device cpu \
-    --output artifacts/evaluation
+    --output artifacts/evaluation/baseline-10ep
 ```
 
 If `--output` is provided, `metrics.json` and `evaluation_report.md` are saved inside that directory.
@@ -296,9 +307,9 @@ Execute video inference using:
 
 ```bash
 python -m ml_pipeline.video_inference \
-    --model artifacts/training/baseline-20ep/weights/best.pt \
-    --source path/to/video.mp4 \
-    --output artifacts/video/baseline-20ep.mp4 \
+    --model artifacts/training/baseline-10ep/weights/best.pt \
+    --source artifacts/sample_data/synthetic_test.mp4 \
+    --output artifacts/predictions/baseline-10ep-video.mp4 \
     --confidence 0.25 \
     --iou 0.45 \
     --device cpu

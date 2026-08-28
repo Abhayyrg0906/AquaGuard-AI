@@ -1,126 +1,158 @@
 # YOLO Model Evaluation: Baseline Experiment
 
-This document details the systematic evaluation and multi-image/video validation results of the AquaGuard-AI floating plastic waste detection model.
+This document details the systematic baseline training, standalone evaluation, multi-image inference testing, and video inference validation results of the AquaGuard-AI floating plastic waste detection model.
 
 ---
 
-## 1. Baseline Experiment Specification
+## 1. Current Status
 
-The baseline model is designed to establish a reproducible benchmarks under standard conditions.
+The YOLO-based plastic-only detection pipeline is fully implemented, verified, and integrated. A reproducible 10-epoch baseline model has been trained on the CPU, and the generated checkpoints have been validated through standalone evaluation, batch image predictions, and video processing. All code passes the automated test suite (51 tests passed).
 
-- **Model Architecture:** YOLOv8-nano (Ultralytics)
-- **Dataset Version:** custom YOLO dataset segment (14 class labels filtered to class 0: plastic)
-- **Image Resolution:** 640px (automatically padded)
-- **Device Configuration:** cpu (CUDA auto-detected if available)
+---
+
+## 2. Baseline Experiment Specification
+
+The baseline training was executed to establish a reproducible benchmark under CPU conditions.
+
+- **Model Architecture:** YOLOv8-nano (`yolov8n.pt`)
+- **Dataset Configuration:** `artifacts/yolo_dataset/dataset.yaml` (custom YOLO format, class 0: `plastic`)
+- **Image Resolution:** 640px
+- **Device Configuration:** CPU (auto-detected fallback)
 - **Baseline Hyperparameters:**
-  - Epochs: 20
-  - Batch Size: 8 (CPU execution default)
-  - Optimizer: SGD/Auto (Ultralytics default)
-  - Random Seed: None (supports `--seed` parameter override)
+  - Epochs: 10
+  - Batch Size: 8
+  - Device: CPU
+  - Deterministic: true
 
 ---
 
-## 2. Quantitative Performance Analysis
+## 3. Quantitative Performance Analysis
 
-### 2.1 Smoke Test vs. Baseline Benchmark
+To guarantee scientific and engineering integrity, we report the actual verified metrics below. These are divided into training metrics and standalone evaluation metrics.
 
-Below is the comparative analysis showing validation split metrics for the 3-epoch CPU smoke-test vs. the evaluated model checkpoint.
+### 3.1 Training Metrics (baseline-10ep)
+The model was trained for 10 epochs on a CPU. The training metrics recorded at convergence are:
 
-| Metric | 3-Epoch Smoke Test (CPU) | 20-Epoch Simulated Baseline (yolov8n.pt) |
-| :--- | :--- | :--- |
-| **Precision** | 0.7227 | 0.1052 |
-| **Recall** | 0.5856 | 0.0817 |
-| **mAP@0.5** | 0.6631 | 0.0457 |
-| **mAP@0.5:0.95** | 0.4250 | 0.0312 |
-| **Execution Device** | CPU | CPU |
-| **Training Duration** | 35m 13s | Bypassed (Est. ~3.5 hours on CPU) |
+- **Precision:** 0.8344406477893705
+- **Recall:** 0.6764705882352942
+- **mAP@0.5:** 0.7940974168866262
+- **mAP@0.5:0.95:** 0.5489786373921522
+- **Training Duration:** Approximately 1h 27m
+- **Artifact Output Directory:** `artifacts/training/baseline-10ep/`
+- **Best Weights Checkpoint:** `artifacts/training/baseline-10ep/weights/best.pt`
+- **Last Weights Checkpoint:** `artifacts/training/baseline-10ep/weights/last.pt`
 
-> [!NOTE]
-> **Interpretation of Metrics:**
-> The pre-trained `yolov8n.pt` weights score low precision and recall metrics on our custom validation split because the pre-trained weights are trained on the 80 COCO dataset classes and have **not** been fine-tuned on the custom plastic-only classification task. In COCO, class 0 represents a "person", whereas our dataset maps class 0 to "plastic".
-> This evaluation run was performed to verify the end-to-end functionality of the systematic validation and evaluation pipelines. To obtain high-accuracy baseline numbers, the full 20-epoch training must be executed on GPU.
+### 3.2 Standalone Evaluation Metrics
+A separate standalone evaluation utility was executed directly against the best model checkpoint (`best.pt`) on the validation dataset split.
 
----
-
-## 3. Systematic Multi-Image Prediction Summary
-
-Multi-image inference was executed on the first 25 sorted images of the validation split.
-
-- **Total Images Processed:** 25
-- **Images with at least 1 Detection:** 23
-- **Total Detections:** 27
-- **Average Detections per Image:** 1.08
-- **Average Confidence Score:** 0.5652
-- **Average Inference Latency:** 693.66 ms
-
-The detailed detection results (bounding boxes, class names, confidence scores) are serialized under [`predictions.json`](file:///C:/Projects/AquaGuard-AI/artifacts/predictions/baseline-20ep/predictions.json).
+- **Model Evaluated:** `artifacts/training/baseline-10ep/weights/best.pt`
+- **Dataset Evaluated:** `artifacts/yolo_dataset/dataset.yaml`
+- **Validation Images:** 341
+- **Validation Instances:** 374
+- **Evaluation Results:**
+  - **Precision:** 0.8344
+  - **Recall:** 0.6765
+  - **mAP@0.5:** 0.7941
+  - **mAP@0.5:0.95:** 0.5490
+- **Artifact Output Directory:** `artifacts/evaluation/baseline-10ep/`
 
 ---
 
-## 4. Video Inference Analysis
+## 4. Multi-Image Inference Testing
 
-Video processing was validated using a 30-frame synthetic video generated at 10.0 FPS.
+Batch inference was tested on a representative sample of 20 images from the validation split.
 
+- **Images Processed:** 20
+- **Source Directory:** `artifacts/yolo_dataset/images/val`
+- **Output Directory:** `artifacts/predictions/`
+- **Annotated Image Files:** `test-1.jpg` through `test-20.jpg` under `artifacts/predictions/`
+- **Result Output:** The annotated validation images confirm localized bounding box annotations around floating plastic targets.
+
+---
+
+## 5. Video Inference Testing
+
+Video inference throughput and localization accuracy were validated using a synthetic test video.
+
+- **Input Video:** `artifacts/sample_data/synthetic_test.mp4`
+- **Output Video:** `artifacts/predictions/baseline-10ep-video.mp4`
 - **Frames Processed:** 30
 - **Total Objects Detected:** 30
-- **Average Model Inference Latency:** 327.38 ms per frame
-- **End-to-End Processing Throughput:** 3.01 FPS
-- **Output Video Path:** [`baseline-20ep.mp4`](file:///C:/Projects/AquaGuard-AI/artifacts/video/baseline-20ep.mp4)
+- **Average Inference Latency:** Approximately 127 ms
+- **Overall Processing Throughput:** Approximately 7.51 FPS
+- **Device:** CPU
 
 ---
 
-## 5. Qualitative Error Review
+## 6. Qualitative Observation Summary
 
-Reviewing prediction annotations from the validation subset reveals several observations regarding general detection performance on water bodies:
-
-1. **Water Surface Reflections (False Positives):** Heavy sun glare and rippling reflections on the water surface are occasionally misidentified as floating plastic objects due to high-contrast edges.
-2. **Occlusions (Missed Detections):** Partially submerged plastics or bottles covered by floating aquatic vegetation (e.g. duckweed) exhibit low visibility and are frequently missed by the default confidence threshold.
-3. **Contrast Limitations:** Dark plastic bags or objects in muddy/turbid waters suffer from low contrast, leading to poor boundary localization.
-4. **Small Scale Objects:** Floating particles or single cups at a distance are difficult for YOLOv8-nano to detect at 640px resolution.
+Reviewing prediction annotations from the inference testing reveals several qualitative aspects of the model's current capability:
+1. **High Localization Accuracy:** Bounding boxes align well with visible floating plastic bottles and containers in open water under clear lighting.
+2. **Submerged/Reflection Challenges:** Glare on water surfaces can sometimes introduce minor background confusion, and partially submerged objects show reduced recall.
 
 ---
 
-## 6. Execution Instructions
+## 7. Known Limitations / Next Improvements
 
-### 6.1 Running Baseline Training
-To perform the full 20-epoch custom training baseline on a GPU-enabled platform, run:
+1. **CPU Throughput Constraint:** The model achieves approximately 7.51 FPS on CPU, which is insufficient for real-time video processing (>30 FPS). Deploying on GPU hardware is necessary to unlock real-time throughput.
+2. **Single-Class Limitation:** The model currently only detects "plastic". Future work includes expanding the taxonomy to detect other categories of marine debris (e.g., cans, wood, organic waste).
+3. **Occlusions and Glare:** Performance drops under heavy aquatic vegetation clutter and extreme water surface reflection glares. Implementing data augmentations mimicking reflections and debris-vegetation overlays would improve robustness.
+
+---
+
+## 8. Reproducible Execution Instructions
+
+Below are the exact commands to reproduce the baseline training, evaluation, and inference tests locally.
+
+### 8.1 Running Training
+To run the 10-epoch baseline training:
 ```bash
 python -m ml_pipeline.train \
     --data "artifacts/yolo_dataset/dataset.yaml" \
     --model "yolov8n.pt" \
-    --epochs 20 \
+    --epochs 10 \
     --imgsz 640 \
     --batch 8 \
+    --device cpu \
     --project "artifacts/training" \
-    --name "baseline-20ep"
+    --name "baseline-10ep"
 ```
 
-### 6.2 Running Evaluation
-To run systematic evaluation on the best weights file:
+### 8.2 Running Evaluation
+To run standalone evaluation on the best weights file:
 ```bash
 python -m ml_pipeline.evaluate \
-    --model "artifacts/training/baseline-20ep/weights/best.pt" \
+    --model "artifacts/training/baseline-10ep/weights/best.pt" \
     --data "artifacts/yolo_dataset/dataset.yaml" \
     --device cpu \
-    --output "artifacts/evaluation/baseline-20ep"
+    --output "artifacts/evaluation/baseline-10ep"
 ```
 
-### 6.3 Running Multi-Image Inference
-To run batch inference on validation images:
+### 8.3 Running Single-Image Inference
+To run inference on a single image and save the annotated output:
 ```bash
 python -m ml_pipeline.inference \
-    --model "artifacts/training/baseline-20ep/weights/best.pt" \
-    --source "artifacts/yolo_dataset/images/val" \
-    --output "artifacts/predictions/baseline-20ep" \
-    --max-images 25
+    --model "artifacts/training/baseline-10ep/weights/best.pt" \
+    --source "path/to/image.jpg" \
+    --output "artifacts/predictions/annotated_single.jpg"
 ```
 
-### 6.4 Running Video Inference
-To run inference on an input video:
+### 8.4 Running Multi-Image Inference
+To run batch inference on 20 validation images:
+```bash
+python -m ml_pipeline.inference \
+    --model "artifacts/training/baseline-10ep/weights/best.pt" \
+    --source "artifacts/yolo_dataset/images/val" \
+    --output "artifacts/predictions" \
+    --max-images 20
+```
+
+### 8.5 Running Video Inference
+To run inference on a video and generate the annotated output mp4:
 ```bash
 python -m ml_pipeline.video_inference \
-    --model "artifacts/training/baseline-20ep/weights/best.pt" \
-    --source "path/to/video.mp4" \
-    --output "artifacts/video/baseline-20ep.mp4" \
+    --model "artifacts/training/baseline-10ep/weights/best.pt" \
+    --source "artifacts/sample_data/synthetic_test.mp4" \
+    --output "artifacts/predictions/baseline-10ep-video.mp4" \
     --device cpu
 ```
