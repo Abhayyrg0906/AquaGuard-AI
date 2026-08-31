@@ -47,11 +47,11 @@ To prevent arbitrary training runs, we design four controlled experiments. To av
   Experiment D (YOLOv8-Small Capacity) ──► Evaluate capacity vs latency
 ```
 
-### Experiment A: Current Baseline (exp-01-baseline)
+### Experiment A: Current Baseline (experiment-A-10ep)
 - **Objective:** Reproduce and verify the initial 10-epoch CPU baseline.
 - **Variables Changed:** None.
 - **Variables Held Constant:** All hyperparameters.
-- **Expected Artifacts:** Checkpoints, `metrics.json`, and `training_report.md` inside `artifacts/training/experiments/exp-01-baseline/`.
+- **Expected Artifacts:** Checkpoints, `metrics.json`, and `training_report.md` inside `artifacts/training/experiments/experiment-A-10ep/`.
 - **Reproducibility Command:**
   ```bash
   python -m ml_pipeline.train \
@@ -62,26 +62,26 @@ To prevent arbitrary training runs, we design four controlled experiments. To av
       --batch 8 \
       --device cpu \
       --project "artifacts/training/experiments" \
-      --name "exp-01-baseline" \
+      --name "experiment-A-10ep" \
       --seed 42
   ```
 
-### Experiment B: Longer Training (exp-02-longer-training)
-- **Objective:** Evaluate if training longer (30 epochs) allows the loss to converge further, boosting Recall without overfitting.
-- **Variables Changed:** `epochs` increased from 10 to 30.
-- **Variables Held Constant:** Model (`yolov8n`), imgsz (640), batch (8), device (cpu), seed (42).
-- **Expected Artifacts:** Checkpoints and reports under `artifacts/training/experiments/exp-02-longer-training/`.
+### Experiment B: Reproducibility Run (experiment-B-10ep)
+- **Objective:** Evaluate baseline reproducibility and compile comparison runs.
+- **Variables Changed:** Output run directory name only.
+- **Variables Held Constant:** All baseline parameters (epochs=10).
+- **Expected Artifacts:** Checkpoints and reports under `artifacts/training/experiments/experiment-B-10ep/`.
 - **Reproducibility Command:**
   ```bash
   python -m ml_pipeline.train \
       --data "artifacts/yolo_dataset/dataset.yaml" \
       --model "yolov8n.pt" \
-      --epochs 30 \
+      --epochs 10 \
       --imgsz 640 \
       --batch 8 \
       --device cpu \
       --project "artifacts/training/experiments" \
-      --name "exp-02-longer-training" \
+      --name "experiment-B-10ep" \
       --seed 42
   ```
 

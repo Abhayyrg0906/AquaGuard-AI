@@ -1,7 +1,7 @@
 {
     "experiments": [
         {
-            "id": "exp-01-baseline",
+            "id": "experiment-A-10ep",
             "description": "Current baseline 10-epoch CPU configuration",
             "model": "yolov8n.pt",
             "epochs": 10,
@@ -15,10 +15,10 @@
             "mosaic": 1.0
         },
         {
-            "id": "exp-02-longer-training",
-            "description": "Train for 30 epochs with baseline parameters to evaluate convergence",
+            "id": "experiment-B-10ep",
+            "description": "Train for 10 epochs with baseline parameters to evaluate reproducibility",
             "model": "yolov8n.pt",
-            "epochs": 30,
+            "epochs": 10,
             "imgsz": 640,
             "batch": 8,
             "seed": 42,
