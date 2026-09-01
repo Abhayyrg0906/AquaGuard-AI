@@ -154,6 +154,48 @@ python -m ml_pipeline.video_inference \
 
 ---
 
+## Web Application Demo Interface
+
+AquaGuard AI includes an integrated web application powered by **FastAPI** that serves both a REST API and a responsive demo dashboard.
+
+### 1. Starting the Application
+
+Launch the local web server:
+```bash
+python -m app.main
+```
+Or with Uvicorn:
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+Open your browser and navigate to: `http://localhost:8000`
+
+### 2. Web Interface Features
+
+- **Image Detection Tab:**
+  - Drag-and-drop custom aquatic images or select pre-loaded validation samples.
+  - Dynamically adjust Confidence and NMS IoU thresholds.
+  - View real-time annotated bounding boxes, item count, inference latency, and detection tables.
+- **Video Analysis Tab:**
+  - Upload video clips or execute detection on pre-loaded synthetic water body feeds.
+  - View sequential frame processing metrics (FPS, total detections, average latency).
+  - Stream and playback annotated output videos directly in the browser.
+- **Model Baseline & Metrics Tab:**
+  - View verified baseline metrics: **Precision (83.44%)**, **Recall (67.65%)**, **mAP@0.5 (79.41%)**, **mAP@0.5:0.95 (54.90%)**.
+  - Inspect model architecture parameters and hardware performance notes.
+
+### 3. Core REST API Endpoints
+
+- `GET /` - Interactive Demo Web Interface.
+- `GET /api/v1/health` - System health and active model loading status.
+- `GET /api/v1/model-info` - Active model metadata and verified baseline metrics.
+- `GET /api/v1/samples` - Curated sample images and videos for rapid testing.
+- `POST /api/v1/predict/image` - Executes plastic detection on uploaded/sample images.
+- `POST /api/v1/predict/video` - Executes sequential frame detection on uploaded/sample videos.
+- Interactive Swagger API documentation: `http://localhost:8000/docs`
+
+---
+
 ## Current Trained Baseline
 
 - **Model Checkpoint:** `artifacts/training/baseline-10ep/weights/best.pt`
@@ -177,12 +219,12 @@ python -m ml_pipeline.video_inference \
 
 ### Current Limitations:
 1. **Single-Class Baseline:** The model is currently a plastic-only detection model (class 0: `plastic`).
-2. **CPU Throughput Constraint:** Video processing runs at approximately 7.51 FPS with an average latency of 127 ms per frame on CPU, which does not meet real-time requirements (>30 FPS).
-3. **Environmental Occlusions & Glare:** Floating debris can be partially hidden by aquatic vegetation or obscured by water surface reflection glares.
+2. **CPU Throughput Constraint:** Video processing runs at approximately ~7.16 - 7.51 FPS with an average latency of ~127 - 136 ms per frame on CPU, which does not meet real-time edge video requirements (>30 FPS).
+3. **Deferred Experiments:** Optimization experiments (Experiment C with AdamW/mosaic tuning and Experiment D with YOLOv8-small) are planned and documented in `docs/experiment_plan.md` but deferred for GPU execution to prevent long CPU compute runs.
 
 ### Next Improvements:
-1. **GPU Scale Training:** Fine-tune for longer epochs (50–100) using GPU acceleration.
-2. **Multi-Class Detection:** Extend the model taxonomy to other forms of marine pollution (e.g. glass, metal, wood).
+1. **GPU Scale Training:** Fine-tune for longer epochs (30–100) using GPU acceleration.
+2. **Multi-Class Detection:** Extend the model taxonomy to other forms of marine pollution (e.g. glass, metal, wood, organic debris).
 3. **Data Augmentation:** Integrate brightness, contrast, water reflections, and occlusion data augmentations to increase model robustness.
-4. **Model Optimization:** Export to TensorRT or ONNX formats to optimize throughput for real-time edge deployments.
-```
+4. **Model Optimization:** Export to TensorRT or ONNX Runtime to optimize throughput for real-time edge deployments.
+
