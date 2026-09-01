@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AquaGuard AI — Floating Plastic Waste Detection</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="header-content">
+                <div class="brand-group">
+                    <div class="brand-icon">🌊</div>
+                    <div>
+                        <h1 class="brand-title">AquaGuard <span class="brand-accent">AI</span></h1>
+                        <p class="brand-subtitle">Automated Computer Vision Detection of Floating Plastic Waste in Water Bodies</p>
+                    </div>
+                </div>
+                <div class="header-status">
+                    <div class="status-indicator">
+                        <span class="status-dot pulse" id="system-status-dot"></span>
+                        <span class="status-text" id="system-status-text">Connecting to Model...</span>
+                    </div>
+                    <div class="model-badge" id="header-model-badge">YOLOv8n • CPU</div>
+                </div>
+            </div>
+
+            <!-- Navigation Tabs -->
+            <nav class="nav-tabs">
+                <button class="nav-tab active" data-tab="image-tab">
+                    <span class="tab-icon">🖼️</span> Image Detection
+                </button>
+                <button class="nav-tab" data-tab="video-tab">
+                    <span class="tab-icon">🎥</span> Video Analysis
+                </button>
+                <button class="nav-tab" data-tab="metrics-tab">
+                    <span class="tab-icon">📊</span> Model Baseline & Metrics
+                </button>
+            </nav>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- TAB 1: IMAGE DETECTION -->
+            <section id="image-tab" class="tab-pane active">
+                <div class="grid-layout">
+                    <!-- Left: Control & Upload Panel -->
+                    <div class="panel upload-panel">
+                        <div class="panel-header">
+                            <h2>1. Select or Upload Image</h2>
+                            <p class="panel-desc">Upload aquatic imagery or select preloaded validation samples.</p>
+                        </div>
+
+                        <!-- Dropzone -->
+                        <div class="dropzone" id="image-dropzone">
+                            <input type="file" id="image-file-input" accept=".jpg,.jpeg,.png" hidden>
+                            <div class="dropzone-content">
+                                <div class="dropzone-icon">📥</div>
+                                <p class="dropzone-main-text">Drag & drop image here or <span class="browse-link">browse files</span></p>
+                                <p class="dropzone-sub-text">Supported formats: JPG, JPEG, PNG (Max 20MB)</p>
+                            </div>
+                            <div class="file-preview-info hidden" id="image-file-info">
+                                <span class="file-name" id="image-file-name">filename.jpg</span>
+                                <button class="btn-clear" id="image-clear-btn" title="Remove file">✕</button>
+                            </div>
+                        </div>
+
+                        <!-- Sample Selector -->
+                        <div class="sample-selector-group">
+                            <label class="section-label">Or Select a Sample Scene:</label>
+                            <div class="sample-chips" id="image-sample-chips">
+                                <button class="chip" data-sample-id="sample_image_1">Val Sample 1</button>
+                                <button class="chip" data-sample-id="sample_image_2">Val Sample 2</button>
+                                <button class="chip" data-sample-id="sample_image_3">Val Sample 3</button>
+                            </div>
+                        </div>
+
+                        <!-- Threshold Controls -->
+                        <div class="controls-group">
+                            <label class="section-label">Detection Hyperparameters:</label>
+                            
+                            <div class="slider-control">
+                                <div class="slider-header">
+                                    <span>Confidence Threshold</span>
+                                    <span class="slider-value" id="image-conf-val">0.25</span>
+                                </div>
+                                <input type="range" id="image-conf-slider" min="0.05" max="0.95" step="0.05" value="0.25">
+                                <p class="slider-hint">Lower threshold (e.g. 0.25) reveals weaker or partially submerged plastic debris. Higher threshold is more strict and may hide valid detections.</p>
+                            </div>
+
+                            <div class="slider-control">
+                                <div class="slider-header">
+                                    <span>NMS IoU Threshold</span>
+                                    <span class="slider-value" id="image-iou-val">0.45</span>
+                                </div>
+                                <input type="range" id="image-iou-slider" min="0.10" max="0.90" step="0.05" value="0.45">
+                                <p class="slider-hint">Controls Non-Maximum Suppression overlap threshold for filtering duplicate boxes.</p>
+                            </div>
+                        </div>
+
+                        <!-- Run Button -->
+                        <button class="btn-primary" id="btn-run-image">
+                            <span class="btn-text">🔍 Run Plastic Detection</span>
+                            <span class="spinner hidden" id="image-spinner"></span>
+                        </button>
+                    </div>
+
+                    <!-- Right: Results Panel -->
+                    <div class="panel results-panel">
+                        <div class="panel-header">
+                            <h2>2. Detection Output & Analytics</h2>
+                            <p class="panel-desc">Annotated bounding boxes and plastic debris classification.</p>
+                        </div>
+
+                        <!-- Placeholder State -->
+                        <div class="placeholder-state" id="image-placeholder">
+                            <div class="placeholder-icon">🎯</div>
+                            <h3>Ready for Inference</h3>
+                            <p>Upload an aquatic image or choose a sample to inspect plastic detections.</p>
+                        </div>
+
+                        <!-- Output Container -->
+                        <div class="output-container hidden" id="image-output-container">
+                            <!-- Metric Stat Cards -->
+                            <div class="stats-grid">
+                                <div class="stat-card">
+                                    <span class="stat-label">Items Detected</span>
+                                    <span class="stat-value highlight" id="stat-detection-count">0</span>
+                                </div>
+                                <div class="stat-card">
+                                    <span class="stat-label">Inference Latency</span>
+                                    <span class="stat-value" id="stat-inference-time">0 ms</span>
+                                </div>
+                                <div class="stat-card">
+                                    <span class="stat-label">Resolution</span>
+                                    <span class="stat-value" id="stat-image-dims">0 × 0</span>
+                                </div>
+                            </div>
+
+                            <!-- Alert Banner (for 0 detections or info) -->
+                            <div class="alert-banner" id="image-alert-banner"></div>
+
+                            <!-- Annotated Image Display -->
+                            <div class="image-viewer">
+                                <img id="annotated-image-display" src="" alt="Annotated Detection Result">
+                            </div>
+
+                            <!-- Detections Table -->
+                            <div class="detections-table-container">
+                                <h3>Detected Objects Breakdown</h3>
+                                <table class="detections-table">
+                                    <thead>
+                                        <tr>
+                                            <th>#</th>
+                                            <th>Class</th>
+                                            <th>Confidence</th>
+                                            <th>Bounding Box [x1, y1, x2, y2]</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="detections-table-body">
+                                        <!-- Populated dynamically -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 2: VIDEO ANALYSIS -->
+            <section id="video-tab" class="tab-pane">
+                <div class="grid-layout">
+                    <!-- Left: Control & Upload Panel -->
+                    <div class="panel upload-panel">
+                        <div class="panel-header">
+                            <h2>1. Select or Upload Video</h2>
+                            <p class="panel-desc">Process video streams to track floating debris over time.</p>
+                        </div>
+
+                        <!-- Dropzone -->
+                        <div class="dropzone" id="video-dropzone">
+                            <input type="file" id="video-file-input" accept=".mp4,.avi,.mov,.mkv" hidden>
+                            <div class="dropzone-content">
+                                <div class="dropzone-icon">🎬</div>
+                                <p class="dropzone-main-text">Drag & drop video here or <span class="browse-link">browse files</span></p>
+                                <p class="dropzone-sub-text">Supported formats: MP4, AVI, MOV (Max 50MB)</p>
+                            </div>
+                            <div class="file-preview-info hidden" id="video-file-info">
+                                <span class="file-name" id="video-file-name">video.mp4</span>
+                                <button class="btn-clear" id="video-clear-btn" title="Remove file">✕</button>
+                            </div>
+                        </div>
+
+                        <!-- Sample Selector -->
+                        <div class="sample-selector-group">
+                            <label class="section-label">Or Select a Sample Video Feed:</label>
+                            <div class="sample-chips" id="video-sample-chips">
+                                <button class="chip" data-sample-id="sample_video_1">Synthetic Water Video (30 frames)</button>
+                            </div>
+                        </div>
+
+                        <!-- Threshold Controls -->
+                        <div class="controls-group">
+                            <label class="section-label">Detection Hyperparameters:</label>
+                            
+                            <div class="slider-control">
+                                <div class="slider-header">
+                                    <span>Confidence Threshold</span>
+                                    <span class="slider-value" id="video-conf-val">0.25</span>
+                                </div>
+                                <input type="range" id="video-conf-slider" min="0.05" max="0.95" step="0.05" value="0.25">
+                                <p class="slider-hint">Lower threshold (e.g. 0.25) reveals weaker or partially submerged plastic debris. Higher threshold is more strict and may hide valid detections.</p>
+                            </div>
+
+                            <div class="slider-control">
+                                <div class="slider-header">
+                                    <span>NMS IoU Threshold</span>
+                                    <span class="slider-value" id="video-iou-val">0.45</span>
+                                </div>
+                                <input type="range" id="video-iou-slider" min="0.10" max="0.90" step="0.05" value="0.45">
+                                <p class="slider-hint">Controls Non-Maximum Suppression overlap threshold for filtering duplicate boxes.</p>
+                            </div>
+                        </div>
+
+                        <!-- Run Button -->
+                        <button class="btn-primary" id="btn-run-video">
+                            <span class="btn-text">⚡ Process Video Feed</span>
+                            <span class="spinner hidden" id="video-spinner"></span>
+                        </button>
+                        
+                        <div class="cpu-warning-box">
+                            <span>ℹ️ Video processing executes sequentially on CPU (~7-8 FPS). Shorter clips recommended.</span>
+                        </div>
+                    </div>
+
+                    <!-- Right: Results Panel -->
+                    <div class="panel results-panel">
+                        <div class="panel-header">
+                            <h2>2. Processed Video Stream</h2>
+                            <p class="panel-desc">Continuous detection stream with real-time bounding box annotations.</p>
+                        </div>
+
+                        <!-- Placeholder State -->
+                        <div class="placeholder-state" id="video-placeholder">
+                            <div class="placeholder-icon">📽️</div>
+                            <h3>Ready for Video Inference</h3>
+                            <p>Upload a video clip or run the 30-frame synthetic test to view annotated playback.</p>
+                        </div>
+
+                        <!-- Output Container -->
+                        <div class="output-container hidden" id="video-output-container">
+                            <!-- Metric Stat Cards -->
+                            <div class="stats-grid four-col">
+                                <div class="stat-card">
+                                    <span class="stat-label">Frames Processed</span>
+                                    <span class="stat-value" id="stat-video-frames">0</span>
+                                </div>
+                                <div class="stat-card">
+                                    <span class="stat-label">Total Detections</span>
+                                    <span class="stat-value highlight" id="stat-video-detections">0</span>
+                                </div>
+                                <div class="stat-card">
+                                    <span class="stat-label">Throughput</span>
+                                    <span class="stat-value" id="stat-video-fps">0 FPS</span>
+                                </div>
+                                <div class="stat-card">
+                                    <span class="stat-label">Avg Latency</span>
+                                    <span class="stat-value" id="stat-video-latency">0 ms</span>
+                                </div>
+                            </div>
+
+                            <!-- Alert Banner -->
+                            <div class="alert-banner" id="video-alert-banner"></div>
+
+                            <!-- Video Player -->
+                            <div class="video-player-wrapper">
+                                <video id="annotated-video-player" controls autoplay loop playsinline>
+                                    <source src="" type="video/mp4" id="video-source">
+                                    Your browser does not support HTML5 video playback.
+                                </video>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 3: MODEL BASELINE & METRICS -->
+            <section id="metrics-tab" class="tab-pane">
+                <div class="metrics-dashboard">
+                    <div class="metrics-header-card">
+                        <div>
+                            <h2>Verified Baseline Model Evaluation</h2>
+                            <p>Trained YOLOv8-nano model metrics verified across 341 validation images and 374 object instances.</p>
+                        </div>
+                        <div class="badge-status">Status: Baseline Verified</div>
+                    </div>
+
+                    <!-- Verified Score Cards -->
+                    <div class="kpi-grid">
+                        <div class="kpi-card accent-cyan">
+                            <div class="kpi-icon">🎯</div>
+                            <div class="kpi-body">
+                                <span class="kpi-title">Precision (P)</span>
+                                <span class="kpi-number" id="metric-precision">83.44%</span>
+                                <span class="kpi-subtitle">True positive detection accuracy</span>
+                            </div>
+                        </div>
+
+                        <div class="kpi-card accent-blue">
+                            <div class="kpi-icon">🔍</div>
+                            <div class="kpi-body">
+                                <span class="kpi-title">Recall (R)</span>
+                                <span class="kpi-number" id="metric-recall">67.65%</span>
+                                <span class="kpi-subtitle">Fraction of plastic objects captured</span>
+                            </div>
+                        </div>
+
+                        <div class="kpi-card accent-green">
+                            <div class="kpi-icon">📈</div>
+                            <div class="kpi-body">
+                                <span class="kpi-title">mAP @ 0.50</span>
+                                <span class="kpi-number" id="metric-map50">79.41%</span>
+                                <span class="kpi-subtitle">Mean Average Precision at 0.5 IoU</span>
+                            </div>
+                        </div>
+
+                        <div class="kpi-card accent-purple">
+                            <div class="kpi-icon">🏆</div>
+                            <div class="kpi-body">
+                                <span class="kpi-title">mAP @ 0.50:0.95</span>
+                                <span class="kpi-number" id="metric-map5095">54.90%</span>
+                                <span class="kpi-subtitle">Primary COCO benchmark metric</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Model Details Table -->
+                    <div class="specs-grid">
+                        <div class="panel spec-card">
+                            <h3>Model Architecture & Parameters</h3>
+                            <ul class="spec-list">
+                                <li><strong>Architecture:</strong> <span>YOLOv8n (Nano)</span></li>
+                                <li><strong>Task:</strong> <span>Single-Class Object Detection ("Plastic")</span></li>
+                                <li><strong>Input Resolution:</strong> <span>640 × 640 px</span></li>
+                                <li><strong>Training Epochs:</strong> <span>10 Epochs (CPU)</span></li>
+                                <li><strong>Batch Size:</strong> <span>8</span></li>
+                                <li><strong>Inference Engine:</strong> <span>Ultralytics / PyTorch</span></li>
+                                <li><strong>Active Device:</strong> <span class="badge-tag">CPU</span></li>
+                            </ul>
+                        </div>
+
+                        <div class="panel spec-card">
+                            <h3>Performance & Engineering Notes</h3>
+                            <ul class="spec-list">
+                                <li><strong>Average Image Latency:</strong> <span>~90 - 130 ms (CPU)</span></li>
+                                <li><strong>Video Processing Throughput:</strong> <span>~7.51 FPS</span></li>
+                                <li><strong>Validation Dataset:</strong> <span>341 Images / 374 Instances</span></li>
+                                <li><strong>Checkpoint Location:</strong> <span class="code-path">artifacts/training/baseline-10ep/weights/best.pt</span></li>
+                                <li><strong>Optimization Status:</strong> <span>Experiments C & D deferred for GPU deployment</span></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="app-footer">
+            <p>AquaGuard AI • Environmental Computer Vision Research Platform • Monorepo Integration</p>
+        </footer>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
